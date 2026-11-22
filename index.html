@@ -521,7 +521,7 @@ html.theme-fade,html.theme-fade *,html.theme-fade *::before,html.theme-fade *::a
 .hslide-cta{display:inline-flex;align-items:center;gap:7px;background:#1C1B17;color:#F4F2ED;font-size:13.5px;font-weight:600;padding:9px 16px;border-radius:999px;margin-top:3px}
 .hslide-cta .icon{width:15px;height:15px}
 .hslider-dots{position:absolute;right:16px;bottom:18px;z-index:3;display:flex;gap:6px}
-.hdot{width:8px;height:8px;padding:0;border:0;border-radius:999px;background:rgba(244,242,237,.45);cursor:pointer;transition:width .35s ease,background-color .35s ease}
+.hdot{width:8px;height:8px;min-height:8px;padding:0;border:0;border-radius:999px;background:rgba(244,242,237,.45);cursor:pointer;transition:width .35s ease,background-color .35s ease}
 .hdot:hover{background:rgba(244,242,237,.75)}
 .hdot.is-active{width:22px;background:#F4F2ED}
 .pendants{position:absolute;top:0;right:6%;display:flex;gap:34px;z-index:2;pointer-events:none}
@@ -908,38 +908,89 @@ footer ul button:hover{color:var(--on-dark)}
 @media (max-width:860px){
   nav.main{display:none}
   .burger{display:grid}
-  .logo-img{height:30px;width:115px}
+  /* Header must fit a phone: tighter gaps, smaller logo and icon
+     buttons so burger + logo + 4 actions stay inside the wrap. */
+  .hbar{gap:10px}
+  .hbtn{width:40px;height:40px}
+  .hicons{gap:0}
+  .logo-img{height:27px;width:104px}
   footer .logo-img{height:40px;width:153px}
+  .wrap{padding:0 16px}
   .hero{margin:0 8px}
-  .hero-in{grid-template-columns:1fr;padding:44px 24px 36px}
-  .hero-slider{height:340px}
+  .hero-in{grid-template-columns:1fr;padding:36px 20px 28px;gap:22px}
+  .hero h1{font-size:38px}
+  .hero p{font-size:16px;margin:18px 0 24px}
+  /* The pendant lamps hang over the desktop hero's photo side; on a
+     stacked phone hero they cross the headline, so they are hidden. */
+  .pendants{display:none}
+  .hero-cards{flex-direction:column;gap:10px;margin-top:28px}
+  .mini{width:100%}
+  .mini b,.mini span b:first-child{max-width:none}
+  .hero-slider{height:300px;border-radius:20px}
   .hslide-cap{left:16px;right:16px;bottom:38px}
   .hslider-dots{bottom:14px}
-  .pendants{right:2%}
   .grid{grid-template-columns:repeat(2,1fr);gap:16px}
   .about-grid,.pd,.split{grid-template-columns:1fr;gap:30px}
-  .pd .main-img img{height:380px}
-  .offer-track .offer{flex-basis:88%}
+  .about-grid img.big{height:300px}
+  .split img{height:280px}
+  .article img.hero-a{height:240px}
+  .pd .main-img img{height:320px}
+  /* Four 88px thumbs + gaps overflow a phone — shrink and let them wrap. */
+  .thumbs{flex-wrap:wrap}
+  .thumbs button{width:70px;height:70px}
+  .offer-track .offer{flex-basis:88%;min-height:300px}
   .atelier{grid-template-columns:1fr}
   .atelier .side img{min-height:220px;height:220px}
   .pick{flex-basis:calc(72% - 10px)}
   .rev-grid{grid-template-columns:1fr}
-  .cats,.reviews,.jgrid,.values{grid-template-columns:1fr}
-  .look>img{height:380px}
-  footer{padding-top:30px}
+  /* Categories become a compact 2-up grid on phones instead of seven
+     full-width cards stacked into one very long scroll. */
+  .cats{grid-template-columns:repeat(2,1fr);gap:14px}
+  .catcard h3{font-size:16px}
+  .catcard .row{padding:10px 12px 12px}
+  .catcard .go{width:34px;height:34px;top:10px;right:10px}
+  .reviews,.jgrid,.values{grid-template-columns:1fr}
+  .look>img{height:300px}
+  .hotcard{width:158px;padding:8px;gap:8px}
+  .hotcard img{width:38px;height:38px}
+  .sec-head{flex-wrap:wrap;align-items:center}
+  footer{padding-top:30px;margin-left:8px;margin-right:8px}
   footer .fgrid{grid-template-columns:1fr 1fr;gap:26px}
   footer .fgrid>div:first-child{grid-column:1/-1}
   footer h4{line-height:1.3}
+  footer ul button{min-height:36px}
   .fbot{flex-direction:column;align-items:flex-start;gap:12px;margin-top:22px}
   .fbot>span,.fbot .links{flex:none}
   .paylogos{justify-content:flex-start}
   .modal{padding:10px}
   .modal .box{grid-template-columns:1fr;overflow-y:auto}
-  .modal .box>img{min-height:180px;height:180px}
-  .modal .mc{padding:26px 22px 30px}
+  .modal .box>img{min-height:150px;height:150px}
+  .modal .mc{padding:24px 20px 26px}
   .modal .mc h3{font-size:25px}
   section{padding-top:60px}
   .addbag{opacity:1;transform:none}
+  /* Checkout's district/note pair stacks instead of squeezing 2-up. */
+  #view-checkout .cform>div{grid-template-columns:1fr!important}
+  .co-card{padding:22px 18px}
+  /* 16px form text stops iOS Safari auto-zooming on focus. */
+  .cform input,.cform textarea,.news input,.code-row input,.hsearch input{font-size:16px}
+  .zb-note{white-space:normal;text-align:center;width:calc(100vw - 40px);font-size:12px}
+}
+@media (max-width:560px){
+  .hero h1{font-size:34px}
+  .hero-slider{height:280px}
+  .hslide-sub{display:none}
+  .hslide-title{font-size:21px}
+  .feats{grid-template-columns:1fr;gap:4px;margin-top:36px}
+  .grid{gap:14px}
+  .card h3{font-size:15px}
+  .page-head{padding-top:36px}
+  .filters .fbtn{padding:0 16px;height:40px;font-size:13.5px}
+  .ditem{grid-template-columns:64px 1fr auto;gap:12px}
+  .ditem img{width:64px;height:64px}
+  .modal .mc h3{font-size:23px}
+  .codetag{padding-left:16px}
+  .codetag b{font-size:14px}
 }
 @media (prefers-reduced-motion: reduce){
   *,*::before,*::after{animation-duration:.001s!important;transition-duration:.001s!important}
