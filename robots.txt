@@ -1,0 +1,8 @@
+# BEETLE PRO — robots.txt
+# Lives at the root of the site, next to index.html.
+# Live site: https://niczzxo.github.io/BeetlePro/
+
+User-agent: *
+Allow: /
+
+Sitemap: https://niczzxo.github.io/BeetlePro/sitemap.xml
