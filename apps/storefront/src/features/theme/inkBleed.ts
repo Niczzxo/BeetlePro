@@ -15,7 +15,10 @@
    own themes. All hardening is preserved: the 7 s capture cap,
    the 20 s capture watchdog, the toggle busy guard, the rAF
    scroll guard and the bleed scroll pin, the fresh-pair rule,
-   and overlay cleanup on every path.
+   and overlay cleanup on every path. The capture scroll pin is
+   flip-only, as on the live site: background captures never pin
+   and discard their results if the visitor scrolls mid-render
+   (see the capture scheduling note below).
 
    The one mechanical difference from the legacy: the legacy
    bundles html2canvas 1.4.1 inline as a base64 data URI (with
@@ -742,9 +745,20 @@ export function initInkBleed(): void {
     return s.width + 'x' + s.height + '@' + scale;
   }
 
-  function capturePage(theme: ThemeName, scale: number, maxTextureSize: number): Promise<Snapshot> {
+  function capturePage(
+    theme: ThemeName,
+    scale: number,
+    maxTextureSize: number,
+    atScrollY?: number,
+  ): Promise<Snapshot> {
     const key = layoutKey(scale);
     const size = documentSize();
+    /* The scroll position this capture belongs to, handed down from
+       captureAll: the clone's stuck header copy is painted at exactly
+       this offset. Reading the live scroll position later (inside
+       onclone, after html2canvas has done its own scrolling of the
+       live page) can land a header-height away from the truth. */
+    const capY = typeof atScrollY === 'number' ? atScrollY : window.scrollY;
     const safeScale = Math.min(scale, maxTextureSize / size.width, maxTextureSize / size.height);
     return loadHtml2Canvas().then(function (html2canvas) {
       return html2canvas(document.body, {
@@ -800,7 +814,7 @@ export function initInkBleed(): void {
             const liveEls = stuck.querySelectorAll<HTMLElement>('[data-ink-live]');
             for (let li = 0; li < liveEls.length; li++) liveEls[li].style.visibility = 'hidden';
             stuck.style.position = 'absolute';
-            stuck.style.top = window.scrollY + 'px';
+            stuck.style.top = capY + 'px';
             stuck.style.left = '0';
             stuck.style.right = '0';
             stuck.style.margin = '0';
@@ -1327,9 +1341,10 @@ export function initInkBleed(): void {
     theme: ThemeName,
     scale: number,
     maxTex: number,
+    atScrollY?: number,
   ): Promise<Snapshot> {
     return Promise.race([
-      capturePage(theme, scale, maxTex),
+      capturePage(theme, scale, maxTex, atScrollY),
       new Promise<Snapshot>(function (_, reject) {
         window.setTimeout(function () {
           reject(new Error('snapshot capture timed out'));
@@ -1339,33 +1354,44 @@ export function initInkBleed(): void {
   }
 
   /* ---------- Capture scheduling ---------- */
-  /* A background capture pins the scroll and renders the whole
-     document twice on the main thread, so one that starts while the
-     visitor is scrolling reads as a hard scroll freeze on a phone.
-     The stamp below holds any scheduled (background) capture until
-     the scroll has been idle for a moment; it then runs exactly as
-     before. A theme flip never waits on this: it captures on demand
-     through ensureSnapshots, which calls captureAll directly. */
-  let lastScrollStamp = 0;
+  /* A background capture renders the whole document twice on the
+     main thread, so one that starts while the visitor is scrolling
+     reads as a hard scroll freeze on a phone. Worse, the old
+     background path also pinned the scroll for the whole render:
+     the visitor would pause, the capture would start and pin, and
+     their next scroll attempt fought the pin and froze. Background
+     captures therefore never pin, and they only run while the page
+     is visible and the scroll has been idle for a moment (the stamp
+     starts at module init, so the first capture after load waits
+     for the same idle window instead of firing during the
+     visitor's first scroll). The scroll generation lets a running
+     background capture notice a fresh scroll and abandon its
+     results rather than store snapshots rendered at a position
+     the visitor has already left. A theme flip never waits on any
+     of this: it captures on demand through ensureSnapshots, which
+     calls captureAll(true) directly, and only that path may pin. */
+  let lastScrollStamp = performance.now();
+  let scrollGen = 0;
   window.addEventListener(
     'scroll',
     function () {
       lastScrollStamp = performance.now();
+      scrollGen++;
     },
     { passive: true },
   );
   function scheduleCapture(delay: number): void {
     window.clearTimeout(resizeTimer);
     resizeTimer = window.setTimeout(function () {
-      if (performance.now() - lastScrollStamp < 1200) {
+      if (document.hidden || performance.now() - lastScrollStamp < 1200) {
         scheduleCapture(RESIZE_DEBOUNCE_MS);
         return;
       }
-      captureAll();
+      captureAll(false);
     }, delay);
   }
 
-  function captureAll(): Promise<void> | undefined {
+  function captureAll(forFlip: boolean): Promise<void> | undefined {
     if (!renderer || renderer.lost || reducedMotion.matches) return;
     if (capturing || frame || root.classList.contains('theme-fade')) {
       captureQueued = true;
@@ -1386,6 +1412,19 @@ export function initInkBleed(): void {
 
     const gen = ++captureGen;
     capturing = true;
+    /* Background captures watch the scroll generation: if the
+       visitor scrolls (or the tab hides) while a render runs, the
+       results belong to a scroll position that no longer exists,
+       so they are discarded and the capture re-queues itself for
+       the next idle window instead of the page ever being pinned
+       still. Flip captures ignore this: they pin, so their scroll
+       position cannot move while they render. */
+    const startScrollGen = scrollGen;
+    const startY = window.scrollY;
+    let aborted = false;
+    function scrolledAway(): boolean {
+      return !forFlip && (aborted || scrollGen !== startScrollGen || document.hidden);
+    }
     /* Watchdog: whatever happens below, the capture state MUST clear.
        A capture that never finishes would otherwise leave `capturing`
        set, the scroll pin attached and the ink-capturing class on the
@@ -1397,26 +1436,44 @@ export function initInkBleed(): void {
         done();
       }
     }, 20000);
-    /* Scroll pin: html2canvas is known to shove the live page's scroll
-       position while it renders its clone (the "page jumps" defect).
-       For the whole capture, hold the scroll exactly where the visitor
-       left it and restore it at the end - the page cannot move. */
+    /* Scroll pin, flip captures only: html2canvas is known to shove
+       the live page's scroll position while it renders its clone
+       (the "page jumps" defect), so a capture taken for a flip
+       holds the scroll exactly where the visitor flipped and
+       restores it at the end. A background capture must NEVER do
+       this: pinning behind the visitor's back is what froze their
+       scroll. It renders at whatever position the page sits at,
+       and the generation checks below throw its results away if
+       that position changes mid-render. */
     const pinX = window.scrollX,
       pinY = window.scrollY;
     root.classList.add('ink-capturing');
-    const pinScroll = function (): void {
-      if (window.scrollX !== pinX || window.scrollY !== pinY) window.scrollTo(pinX, pinY);
-    };
-    window.addEventListener('scroll', pinScroll, { passive: true });
+    let pinScroll: (() => void) | null = null;
+    if (forFlip) {
+      pinScroll = function (): void {
+        if (window.scrollX !== pinX || window.scrollY !== pinY) window.scrollTo(pinX, pinY);
+      };
+      window.addEventListener('scroll', pinScroll, { passive: true });
+    }
     let chain: Promise<void> = Promise.resolve();
     themes.forEach(function (theme) {
       chain = chain.then(function () {
         if (gen !== captureGen) return;
+        if (scrolledAway()) {
+          aborted = true;
+          captureQueued = true;
+          return;
+        }
         const sy = window.scrollY;
-        return captureWithTimeout(theme, scale, renderer.maxTextureSize).then(
+        return captureWithTimeout(theme, scale, renderer.maxTextureSize, startY).then(
           function (snap) {
-            captureScroll[theme] = sy;
             if (gen !== captureGen) return;
+            if (scrolledAway()) {
+              aborted = true;
+              captureQueued = true;
+              return;
+            }
+            captureScroll[theme] = sy;
             if (snap.key !== layoutKey(renderScale())) {
               captureQueued = true;
               return;
@@ -1443,12 +1500,22 @@ export function initInkBleed(): void {
       doneCalled = true;
       window.clearTimeout(watchdog);
       capturing = false;
-      window.removeEventListener('scroll', pinScroll);
+      if (pinScroll) {
+        window.removeEventListener('scroll', pinScroll);
+        if (window.scrollX !== pinX || window.scrollY !== pinY) window.scrollTo(pinX, pinY);
+      }
       root.classList.remove('ink-capturing');
-      if (window.scrollX !== pinX || window.scrollY !== pinY) window.scrollTo(pinX, pinY);
-      /* Both themes on the GPU from this pinned session: the pair is
-         certified fresh for a flip at this layout and scroll position. */
-      if (renderer!.hasValid(current, key) && renderer!.hasValid(otherTheme(current), key)) {
+      /* Both themes on the GPU from this one session: the pair is
+         certified fresh for a flip at this layout and scroll
+         position. A background pair only certifies if the visitor
+         never scrolled while it rendered; a scrolled-away capture
+         leaves any earlier certification untouched. */
+      if (
+        !aborted &&
+        renderer!.hasValid(current, key) &&
+        renderer!.hasValid(otherTheme(current), key) &&
+        (forFlip || scrollGen === startScrollGen)
+      ) {
         freshPairKey = key + '@' + pinY;
       }
       if (captureQueued && captureFailStreak < 4) scheduleCapture(RESIZE_DEBOUNCE_MS);
@@ -1467,7 +1534,7 @@ export function initInkBleed(): void {
         const cur = getTheme();
         if (renderer.hasValid(cur, key) && renderer.hasValid(otherTheme(cur), key))
           return resolve(true);
-        if (!capturing && !frame && !root.classList.contains('theme-fade')) captureAll();
+        if (!capturing && !frame && !root.classList.contains('theme-fade')) captureAll(true);
         if (++tries > 50) return resolve(false); /* ~7.5s worst case */
         window.setTimeout(check, 150);
       })();
