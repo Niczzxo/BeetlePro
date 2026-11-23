@@ -820,16 +820,16 @@ footer ul button:hover{color:var(--on-dark)}
 /* ---------- bag drawer / modal / toast ---------- */
 .scrim{position:fixed;inset:0;background:rgba(18,16,13,.5);backdrop-filter:blur(3px);z-index:90;opacity:0;pointer-events:none;visibility:hidden;transition:opacity .35s,visibility 0s linear .35s}
 .scrim.on{opacity:1;pointer-events:auto;visibility:visible;transition:opacity .35s}
-.drawer{position:fixed;top:0;right:0;height:100dvh;width:min(430px,100vw);background:var(--surface);z-index:95;transform:translateX(105%);transition:transform .45s cubic-bezier(.22,.8,.3,1);display:flex;flex-direction:column;box-shadow:var(--shadow)}
-.drawer.on{transform:none}
+.drawer{position:fixed;top:0;right:0;height:100dvh;width:min(430px,100vw);background:var(--surface);z-index:95;transform:translateX(105%);visibility:hidden;transition:transform .45s cubic-bezier(.22,.8,.3,1),visibility 0s linear .45s;display:flex;flex-direction:column;box-shadow:var(--shadow)}
+.drawer.on{transform:none;visibility:visible;transition:transform .45s cubic-bezier(.22,.8,.3,1)}
 .drawer header{position:static;background:none;backdrop-filter:none}
 .dhead{display:flex;justify-content:space-between;align-items:center;padding:20px 22px;border-bottom:1px solid var(--line)}
 .dhead h3{font-size:19px}
 /* ---------- mobile sidebar ---------- */
 .mscrim{position:fixed;inset:0;background:rgba(18,16,13,.5);backdrop-filter:blur(3px);z-index:90;opacity:0;pointer-events:none;visibility:hidden;transition:opacity .35s,visibility 0s linear .35s}
 .mscrim.on{opacity:1;pointer-events:auto;visibility:visible;transition:opacity .35s}
-.snav{position:fixed;top:0;left:0;height:100dvh;width:min(320px,86vw);background:var(--surface);color:var(--ink);z-index:96;transform:translateX(-105%);transition:transform .45s cubic-bezier(.22,.8,.3,1);display:flex;flex-direction:column;box-shadow:var(--shadow)}
-.snav.on{transform:none}
+.snav{position:fixed;top:0;left:0;height:100dvh;width:min(320px,86vw);background:var(--surface);color:var(--ink);z-index:96;transform:translateX(-105%);visibility:hidden;transition:transform .45s cubic-bezier(.22,.8,.3,1),visibility 0s linear .45s;display:flex;flex-direction:column;box-shadow:var(--shadow)}
+.snav.on{transform:none;visibility:visible;transition:transform .45s cubic-bezier(.22,.8,.3,1)}
 .snav-head{display:flex;justify-content:space-between;align-items:center;padding:20px 22px;border-bottom:1px solid var(--line)}
 .snav-nav{display:flex;flex-direction:column;flex:1;overflow-y:auto;padding:8px 0}
 .snav-link{display:flex;align-items:center;gap:12px;width:100%;text-align:left;padding:15px 22px;font-size:16px;font-weight:500;color:var(--ink);border-bottom:1px solid var(--line);min-height:52px}
@@ -2232,10 +2232,10 @@ function applySEO(view, arg){
     ogu.setAttribute('content', url);
     var ogi = $('#ogImage');
     if (!ogi){ ogi = document.createElement('meta'); ogi.setAttribute('property', 'og:image'); ogi.id = 'ogImage'; head.appendChild(ogi); }
-    ogi.setAttribute('content', SITE_URL.replace(/\/?$/, '/') + IM33);
+    ogi.setAttribute('content', SITE_URL.replace(/\/?$/, '/') + 'assets/demo-hero.jpg');
     var twi = $('#twImage');
     if (!twi){ twi = document.createElement('meta'); twi.setAttribute('name', 'twitter:image'); twi.id = 'twImage'; head.appendChild(twi); }
-    twi.setAttribute('content', SITE_URL.replace(/\/?$/, '/') + IM33);
+    twi.setAttribute('content', SITE_URL.replace(/\/?$/, '/') + 'assets/demo-hero.jpg');
   }
 }
 
@@ -2794,7 +2794,7 @@ function detectZone(){
   var city = cityEl ? cityEl.value : '';
   var addr = addrEl ? addrEl.value : '';
   var text = city + ' ' + addr;
-  if (/gazipur|tongi|narayanganj|savar|ashulia|keraniganj|dhamrai|demra|গাজীপুর|নারায়ণগঞ্জ|সাভার|কেরানীগঞ্জ/i.test(text)) return 'subcity';
+  if (/gazipur|tongi|narayanganj|savar|ashulia|keraniganj|dhamrai|demra|গাজীপুর|টঙ্গী|নারায়ণগঞ্জ|সাভার|আশুলিয়া|কেরানীগঞ্জ|ধামরাই|ডেমরা/i.test(text)) return 'subcity';
   if (/dhaka|ঢাকা/i.test(text)) return 'dhaka';
   if (city.trim() || addr.trim()) return 'outside';
   return null;
@@ -3115,7 +3115,9 @@ function renderBag(){
 $('#bagItems').addEventListener('click', function(e){
   var dq = e.target.closest('[data-dq]');
   if (dq){ var raw = dq.getAttribute('data-dq'); var cut = raw.lastIndexOf('|'); var key = raw.slice(0, cut);
-    bag[key] += (+raw.slice(cut+1)); if (bag[key]<=0) delete bag[key]; renderBag(); return; }
+    var delta = +raw.slice(cut+1); bag[key] += delta;
+    if (delta > 0){ var bp = byId(key.split('~')[0]); var cap = bp ? Math.max(1, bp.stock) : bag[key]; if (bag[key] > cap) bag[key] = cap; }
+    if (bag[key]<=0) delete bag[key]; renderBag(); return; }
   var rm = e.target.closest('[data-rm]');
   if (rm){ delete bag[rm.getAttribute('data-rm')]; renderBag(); }
 });
@@ -4580,27 +4582,40 @@ void main() {
   }
 
   /* ---------- Capture scheduling ---------- */
-  /* A background capture pins the scroll and renders the whole
-     document twice on the main thread, so one that starts while the
-     visitor is scrolling reads as a hard scroll freeze on a phone.
-     The stamp below holds any scheduled (background) capture until
-     the scroll has been idle for a moment; it then runs exactly as
-     before. A theme flip never waits on this: it captures on demand
-     through ensureSnapshots, which calls captureAll directly. */
-  var lastScrollStamp = 0;
-  window.addEventListener('scroll', function(){ lastScrollStamp = performance.now(); }, { passive: true });
+  /* A background capture renders the whole document twice on the
+     main thread, so one that starts while the visitor is scrolling
+     reads as a hard scroll freeze on a phone. Worse, the old
+     background path also pinned the scroll for the whole render:
+     the visitor would pause, the capture would start and pin, and
+     their next scroll attempt fought the pin and froze. Background
+     captures therefore never pin, and they only run while the page
+     is visible and the scroll has been idle for a moment (the stamp
+     starts at module init, so the first capture after load waits
+     for the same idle window instead of firing during the
+     visitor's first scroll). The scroll generation lets a running
+     background capture notice a fresh scroll and abandon its
+     results rather than store snapshots rendered at a position
+     the visitor has already left. A theme flip never waits on any
+     of this: it captures on demand through ensureSnapshots, which
+     calls captureAll(true) directly, and only that path may pin. */
+  var lastScrollStamp = performance.now();
+  var scrollGen = 0;
+  window.addEventListener('scroll', function(){
+    lastScrollStamp = performance.now();
+    scrollGen++;
+  }, { passive: true });
   function scheduleCapture(delay){
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(function(){
-      if (performance.now() - lastScrollStamp < 1200){
+      if (document.hidden || performance.now() - lastScrollStamp < 1200){
         scheduleCapture(RESIZE_DEBOUNCE_MS);
         return;
       }
-      captureAll();
+      captureAll(false);
     }, delay);
   }
 
-  function captureAll(){
+  function captureAll(forFlip){
     if (!renderer || renderer.lost || reducedMotion.matches) return;
     if (capturing || frame || root.classList.contains('theme-fade')){
       captureQueued = true;
@@ -4621,6 +4636,19 @@ void main() {
 
     var gen = ++captureGen;
     capturing = true;
+    /* Background captures watch the scroll generation: if the
+       visitor scrolls (or the tab hides) while a render runs, the
+       results belong to a scroll position that no longer exists,
+       so they are discarded and the capture re-queues itself for
+       the next idle window instead of the page ever being pinned
+       still. Flip captures ignore this: they pin, so their scroll
+       position cannot move while they render. */
+    var startScrollGen = scrollGen;
+    var startY = window.scrollY;
+    var aborted = false;
+    function scrolledAway(){
+      return !forFlip && (aborted || scrollGen !== startScrollGen || document.hidden);
+    }
     /* Watchdog: whatever happens below, the capture state MUST clear.
        A capture that never finishes would otherwise leave `capturing`
        set, the scroll pin attached and the ink-capturing class on the
@@ -4632,24 +4660,34 @@ void main() {
         done();
       }
     }, 20000);
-    /* Scroll pin: html2canvas is known to shove the live page's scroll
-       position while it renders its clone (the "page jumps" defect).
-       For the whole capture, hold the scroll exactly where the visitor
-       left it and restore it at the end - the page cannot move. */
+    /* Scroll pin, flip captures only: html2canvas is known to shove
+       the live page's scroll position while it renders its clone
+       (the "page jumps" defect), so a capture taken for a flip
+       holds the scroll exactly where the visitor flipped and
+       restores it at the end. A background capture must NEVER do
+       this: pinning behind the visitor's back is what froze their
+       scroll. It renders at whatever position the page sits at,
+       and the generation checks below throw its results away if
+       that position changes mid-render. */
     var pinX = window.scrollX, pinY = window.scrollY;
     root.classList.add('ink-capturing');
-    var pinScroll = function(){
-      if (window.scrollX !== pinX || window.scrollY !== pinY) window.scrollTo(pinX, pinY);
-    };
-    window.addEventListener('scroll', pinScroll, { passive: true });
+    var pinScroll = null;
+    if (forFlip){
+      pinScroll = function(){
+        if (window.scrollX !== pinX || window.scrollY !== pinY) window.scrollTo(pinX, pinY);
+      };
+      window.addEventListener('scroll', pinScroll, { passive: true });
+    }
     var chain = Promise.resolve();
     themes.forEach(function(theme){
       chain = chain.then(function(){
         if (gen !== captureGen) return;
+        if (scrolledAway()){ aborted = true; captureQueued = true; return; }
         var sy = window.scrollY;
-        return captureWithTimeout(theme, scale, renderer.maxTextureSize, pinY).then(function(snap){
-          captureScroll[theme] = sy;
+        return captureWithTimeout(theme, scale, renderer.maxTextureSize, startY).then(function(snap){
           if (gen !== captureGen) return;
+          if (scrolledAway()){ aborted = true; captureQueued = true; return; }
+          captureScroll[theme] = sy;
           if (snap.key !== layoutKey(renderScale())){
             captureQueued = true;
             return;
@@ -4674,12 +4712,18 @@ void main() {
       doneCalled = true;
       clearTimeout(watchdog);
       capturing = false;
-      window.removeEventListener('scroll', pinScroll);
+      if (pinScroll){
+        window.removeEventListener('scroll', pinScroll);
+        if (window.scrollX !== pinX || window.scrollY !== pinY) window.scrollTo(pinX, pinY);
+      }
       root.classList.remove('ink-capturing');
-      if (window.scrollX !== pinX || window.scrollY !== pinY) window.scrollTo(pinX, pinY);
-      /* Both themes on the GPU from this pinned session: the pair is
-         certified fresh for a flip at this layout and scroll position. */
-      if (renderer.hasValid(current, key) && renderer.hasValid(otherTheme(current), key)){
+      /* Both themes on the GPU from this one session: the pair is
+         certified fresh for a flip at this layout and scroll
+         position. A background pair only certifies if the visitor
+         never scrolled while it rendered; a scrolled-away capture
+         leaves any earlier certification untouched. */
+      if (!aborted && renderer.hasValid(current, key) && renderer.hasValid(otherTheme(current), key) &&
+          (forFlip || scrollGen === startScrollGen)){
         freshPairKey = key + '@' + pinY;
       }
       if (captureQueued && captureFailStreak < 4) scheduleCapture(RESIZE_DEBOUNCE_MS);
@@ -4697,7 +4741,7 @@ void main() {
         var key = layoutKey(renderScale());
         var cur = getTheme();
         if (renderer.hasValid(cur, key) && renderer.hasValid(otherTheme(cur), key)) return resolve(true);
-        if (!capturing && !frame && !root.classList.contains('theme-fade')) captureAll();
+        if (!capturing && !frame && !root.classList.contains('theme-fade')) captureAll(true);
         if (++tries > 50) return resolve(false); /* ~7.5s worst case */
         setTimeout(check, 150);
       })();
