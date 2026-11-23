@@ -1,0 +1,928 @@
+// Dostelo core database schema.
+// PostgreSQL via Prisma. Money is stored as integer minor units
+// (paisa) plus an ISO currency code. All timestamps are UTC.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ProductStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+enum MediaType {
+  IMAGE
+  VIDEO
+}
+
+enum CartStatus {
+  ACTIVE
+  CONVERTED
+  ABANDONED
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PROCESSING
+  PACKED
+  READY_TO_SHIP
+  SHIPPED
+  OUT_FOR_DELIVERY
+  DELIVERED
+  CANCELLED
+  RETURNED
+}
+
+enum DeliveryZone {
+  DHAKA_CITY
+  DHAKA_SUB_CITY
+  OUTSIDE_DHAKA
+}
+
+enum PaymentGateway {
+  BKASH
+  NAGAD
+  ROCKET
+  UPAY
+  SSLCOMMERZ
+  SHURJOPAY
+  CARD
+  COD
+}
+
+enum PaymentChannel {
+  COD
+  MANUAL
+  GATEWAY
+}
+
+enum PaymentStatus {
+  INITIATED
+  AWAITING_CUSTOMER
+  VERIFICATION_PENDING
+  PENDING
+  PENDING_COLLECTION
+  SUCCESSFUL
+  COLLECTED
+  FAILED
+  CANCELLED
+  REFUNDED
+}
+
+enum RefundStatus {
+  REQUESTED
+  MANUAL_PENDING
+  GATEWAY_NOT_CONFIGURED
+  COMPLETED
+  REJECTED
+}
+
+enum AuditActorType {
+  ADMIN
+  CUSTOMER
+  SYSTEM
+}
+
+// ---------------------------------------------------------------------------
+// Identity
+// ---------------------------------------------------------------------------
+
+model User {
+  id           String     @id @default(uuid())
+  email        String?    @unique
+  phone        String?    @unique
+  passwordHash String?
+  name         String
+  customer     Customer?
+  adminUser    AdminUser?
+  sessions     Session[]
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+}
+
+model Customer {
+  id                 String            @id @default(uuid())
+  userId             String?           @unique
+  user               User?             @relation(fields: [userId], references: [id])
+  fullName           String
+  email              String?
+  phone              String
+  isPhoneVerified    Boolean           @default(false)
+  isEmailVerified    Boolean           @default(false)
+  tags               String[]
+  orderCount         Int               @default(0)
+  lifetimeValueMinor Int               @default(0)
+  currency           String            @default("BDT")
+  addresses          CustomerAddress[]
+  carts              Cart[]
+  orders             Order[]
+  notes              CustomerNote[]
+  customerTags       CustomerTag[]
+  identityLinks      IdentityLink[]
+  leads              Lead[]
+  abandonedCarts     AbandonedCart[]
+  communications     CommunicationLog[]
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+
+  @@index([phone])
+  @@index([email])
+}
+
+model CustomerAddress {
+  id           String       @id @default(uuid())
+  customerId   String
+  customer     Customer     @relation(fields: [customerId], references: [id])
+  label        String?
+  fullName     String
+  phone        String
+  addressLine  String
+  area         String?
+  city         String
+  district     String
+  deliveryZone DeliveryZone
+  isDefault    Boolean      @default(false)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  @@index([customerId])
+}
+
+model AdminUser {
+  id          String          @id @default(uuid())
+  userId      String          @unique
+  user        User            @relation(fields: [userId], references: [id])
+  displayName String
+  isActive    Boolean         @default(true)
+  // TOTP MFA (Phase 4). The secret is set at enrolment and only
+  // used once mfaEnabled is true after a successful code check.
+  mfaSecret   String?
+  mfaEnabled  Boolean         @default(false)
+  roles       AdminUserRole[]
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+}
+
+model Role {
+  id          String           @id @default(uuid())
+  // Stable key such as super-admin, store-manager, accountant.
+  key         String           @unique
+  name        String
+  adminUsers  AdminUserRole[]
+  permissions RolePermission[]
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+}
+
+model Permission {
+  id    String           @id @default(uuid())
+  // Module.action key such as orders.edit or payments.refund.
+  key   String           @unique
+  roles RolePermission[]
+}
+
+model AdminUserRole {
+  adminUserId String
+  roleId      String
+  adminUser   AdminUser @relation(fields: [adminUserId], references: [id])
+  role        Role      @relation(fields: [roleId], references: [id])
+
+  @@id([adminUserId, roleId])
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+  role         Role       @relation(fields: [roleId], references: [id])
+  permission   Permission @relation(fields: [permissionId], references: [id])
+
+  @@id([roleId, permissionId])
+}
+
+model Session {
+  id        String    @id @default(uuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id])
+  // SHA-256 hash of the refresh token, never the token itself.
+  token     String    @unique
+  // Refresh rotation family (Phase 4): every token rotated from
+  // one login shares a family; reuse of a rotated token revokes
+  // the whole family.
+  familyId  String?
+  revokedAt DateTime?
+  expiresAt DateTime
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+  @@index([familyId])
+}
+
+// ---------------------------------------------------------------------------
+// Catalog
+// ---------------------------------------------------------------------------
+
+model Category {
+  id        String     @id @default(uuid())
+  slug      String     @unique
+  name      String
+  parentId  String?
+  parent    Category?  @relation("CategoryTree", fields: [parentId], references: [id])
+  children  Category[] @relation("CategoryTree")
+  position  Int        @default(0)
+  isActive  Boolean    @default(true)
+  products  Product[]
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+}
+
+model Product {
+  id           String          @id @default(uuid())
+  slug         String          @unique
+  name         String
+  categoryId   String
+  category     Category        @relation(fields: [categoryId], references: [id])
+  description  String?
+  status       ProductStatus   @default(DRAFT)
+  isFeatured   Boolean         @default(false)
+  isBestSeller Boolean         @default(false)
+  isNewArrival Boolean         @default(false)
+  tags         String[]
+  variants     ProductVariant[]
+  media        ProductMedia[]
+  orderItems   OrderItem[]
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  @@index([categoryId])
+  @@index([status])
+}
+
+model ProductVariant {
+  id                   String     @id @default(uuid())
+  productId            String
+  product              Product    @relation(fields: [productId], references: [id])
+  sku                  String     @unique
+  name                 String
+  size                 String?
+  colour               String?
+  priceMinor           Int
+  compareAtPriceMinor  Int?
+  currency             String     @default("BDT")
+  stock                Int        @default(0)
+  isActive             Boolean    @default(true)
+  cartItems            CartItem[]
+  orderItems           OrderItem[]
+  createdAt            DateTime   @default(now())
+  updatedAt            DateTime   @updatedAt
+
+  @@index([productId])
+}
+
+model ProductMedia {
+  id        String    @id @default(uuid())
+  productId String
+  product   Product   @relation(fields: [productId], references: [id])
+  type      MediaType @default(IMAGE)
+  url       String
+  alt       String    @default("")
+  position  Int       @default(0)
+  createdAt DateTime  @default(now())
+
+  @@index([productId])
+}
+
+// ---------------------------------------------------------------------------
+// Cart
+// ---------------------------------------------------------------------------
+
+model Cart {
+  id           String     @id @default(uuid())
+  customerId   String?
+  customer     Customer?  @relation(fields: [customerId], references: [id])
+  sessionToken String?    @unique
+  status       CartStatus @default(ACTIVE)
+  currency     String     @default("BDT")
+  items         CartItem[]
+  abandonedCart AbandonedCart?
+  createdAt     DateTime      @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@index([customerId])
+}
+
+model CartItem {
+  id             String         @id @default(uuid())
+  cartId         String
+  cart           Cart           @relation(fields: [cartId], references: [id])
+  productId      String
+  product        Product        @relation(fields: [productId], references: [id])
+  variantId      String
+  variant        ProductVariant @relation(fields: [variantId], references: [id])
+  quantity       Int
+  unitPriceMinor Int
+  currency       String         @default("BDT")
+  addedAt        DateTime       @default(now())
+
+  @@unique([cartId, variantId])
+}
+
+// ---------------------------------------------------------------------------
+// Orders
+// ---------------------------------------------------------------------------
+
+model Order {
+  id                      String            @id @default(uuid())
+  orderNumber             String            @unique
+  customerId              String
+  customer                Customer          @relation(fields: [customerId], references: [id])
+  status                  OrderStatus       @default(PENDING)
+  paymentStatus           PaymentStatus     @default(PENDING)
+  address                 OrderAddress?
+  items                   OrderItem[]
+  payments                Payment[]
+  shipments               Shipment[]
+  statusEvents            OrderStatusEvent[]
+  refunds                 Refund[]
+  subtotalMinor           Int
+  deliveryFeeMinor        Int               @default(0)
+  codFeeMinor             Int               @default(0)
+  discountMinor           Int               @default(0)
+  totalMinor              Int
+  currency                String            @default("BDT")
+  firstOrderFreeDelivery  Boolean           @default(false)
+  adminNote               String?
+  createdAt               DateTime          @default(now())
+  updatedAt               DateTime          @updatedAt
+
+  @@index([customerId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model OrderItem {
+  id             String          @id @default(uuid())
+  orderId        String
+  order          Order           @relation(fields: [orderId], references: [id])
+  productId      String
+  product        Product         @relation(fields: [productId], references: [id])
+  variantId      String?
+  variant        ProductVariant? @relation(fields: [variantId], references: [id])
+  productName    String
+  variantName    String?
+  sku            String?
+  quantity       Int
+  unitPriceMinor Int
+  lineTotalMinor Int
+  currency       String          @default("BDT")
+
+  @@index([orderId])
+}
+
+model OrderAddress {
+  id           String       @id @default(uuid())
+  orderId      String       @unique
+  order        Order        @relation(fields: [orderId], references: [id])
+  fullName     String
+  phone        String
+  addressLine  String
+  area         String?
+  city         String
+  district     String
+  deliveryZone DeliveryZone
+}
+
+model OrderStatusEvent {
+  id        String      @id @default(uuid())
+  orderId   String
+  order     Order       @relation(fields: [orderId], references: [id])
+  status    OrderStatus
+  note      String?
+  actorId   String?
+  createdAt DateTime    @default(now())
+
+  @@index([orderId])
+}
+
+// ---------------------------------------------------------------------------
+// Payments
+// ---------------------------------------------------------------------------
+
+model Payment {
+  id            String         @id @default(uuid())
+  orderId       String
+  order         Order          @relation(fields: [orderId], references: [id])
+  gateway       PaymentGateway
+  channel       PaymentChannel @default(GATEWAY)
+  status        PaymentStatus  @default(INITIATED)
+  amountMinor   Int
+  currency      String         @default("BDT")
+  providerTxnId String?        @unique
+  // Manual mobile banking only: what the customer reported at
+  // confirmation, and the receiving instructions shown to them.
+  senderNumber  String?
+  customerTxnId String?
+  instructions  Json?
+  events        PaymentEvent[]
+  refunds       Refund[]
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@index([orderId])
+  @@index([status])
+}
+
+model PaymentEvent {
+  id        String         @id @default(uuid())
+  paymentId String
+  payment   Payment        @relation(fields: [paymentId], references: [id])
+  type      String
+  status    PaymentStatus?
+  payload   Json?
+  createdAt DateTime       @default(now())
+
+  @@index([paymentId])
+}
+
+model Refund {
+  id          String       @id @default(uuid())
+  paymentId   String
+  payment     Payment      @relation(fields: [paymentId], references: [id])
+  orderId     String
+  order       Order        @relation(fields: [orderId], references: [id])
+  amountMinor Int
+  currency    String       @default("BDT")
+  status      RefundStatus @default(REQUESTED)
+  reason      String?
+  // What happened at the gateway step, in plain words. Null for
+  // manual refunds that never touch a gateway.
+  gatewayNote String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@index([paymentId])
+  @@index([orderId])
+}
+
+// ---------------------------------------------------------------------------
+// Governance
+// ---------------------------------------------------------------------------
+
+model AuditLog {
+  id         String         @id @default(uuid())
+  actorType  AuditActorType
+  actorId    String?
+  actorRole  String?
+  action     String
+  entityType String
+  entityId   String?
+  metadata   Json?
+  ipAddress  String?
+  createdAt  DateTime       @default(now())
+
+  @@index([entityType, entityId])
+  @@index([createdAt])
+}
+
+/** One webhook delivery from a payment gateway. The (gateway,
+ * providerEventId) pair is unique so a redelivery is recognised
+ * as a duplicate and its effects are not applied twice. */
+model WebhookEvent {
+  id              String         @id @default(uuid())
+  gateway         PaymentGateway
+  providerEventId String
+  paymentId       String?
+  payload         Json?
+  createdAt       DateTime       @default(now())
+
+  @@unique([gateway, providerEventId])
+  @@index([paymentId])
+}
+
+// ---------------------------------------------------------------------------
+// Visitor, Buyer Intelligence, CRM and Leads (Phase 5)
+// ---------------------------------------------------------------------------
+//
+// Privacy rules, from docs/ADMIN_PORTAL.md and the admin master
+// structure: anonymous visitors are identified only by random
+// first-party visitor and session ids. No model below carries an
+// IP address, a device fingerprint or any other covert identifier.
+// Events link to a customer only through an authenticated or
+// consented flow, recorded as an IdentityLink with its basis.
+
+enum IdentityStatus {
+  ANONYMOUS
+  KNOWN_CUSTOMER
+  GUEST_CHECKOUT
+  UNVERIFIED_CONTACT
+}
+
+enum ConsentScope {
+  ANALYTICS
+  MARKETING
+}
+
+enum ConsentStatus {
+  GRANTED
+  DENIED
+}
+
+enum IdentityLinkBasis {
+  AUTHENTICATED
+  GUEST_CHECKOUT
+  CONTACT_FORM
+}
+
+enum LeadStatus {
+  NEW
+  QUALIFIED
+  CONTACTED
+  INTERESTED
+  FOLLOW_UP_REQUIRED
+  NEGOTIATION
+  CONVERTED
+  LOST
+  DO_NOT_CONTACT
+}
+
+enum LeadSource {
+  BUYER_INTELLIGENCE
+  GUEST_CHECKOUT
+  CONTACT_FORM
+  MANUAL
+}
+
+model VisitorSession {
+  id             String         @id
+  visitorId      String
+  identityStatus IdentityStatus @default(ANONYMOUS)
+  customerId     String?
+  customer       Customer?      @relation(fields: [customerId], references: [id])
+  events         VisitorEvent[]
+  firstSeenAt    DateTime       @default(now())
+  lastSeenAt     DateTime       @default(now())
+
+  @@index([visitorId])
+  @@index([customerId])
+  @@index([lastSeenAt])
+}
+
+model VisitorEvent {
+  id         String         @id @default(uuid())
+  visitorId  String
+  sessionId  String
+  session    VisitorSession @relation(fields: [sessionId], references: [id])
+  type       String
+  customerId String?
+  path       String?
+  payload    Json?
+  /** False when the visitor denied the marketing consent scope:
+   * the event is kept as an operational record but excluded from
+   * every marketing use. */
+  marketingUsable Boolean   @default(true)
+  occurredAt DateTime       @default(now())
+
+  @@index([visitorId])
+  @@index([sessionId])
+  @@index([customerId])
+  @@index([occurredAt])
+}
+
+model ConsentRecord {
+  id        String        @id @default(uuid())
+  visitorId String
+  scope     ConsentScope
+  status    ConsentStatus
+  createdAt DateTime      @default(now())
+
+  @@index([visitorId, scope])
+}
+
+model IdentityLink {
+  id         String            @id @default(uuid())
+  visitorId  String
+  customerId String
+  customer   Customer          @relation(fields: [customerId], references: [id])
+  basis      IdentityLinkBasis
+  createdAt  DateTime          @default(now())
+
+  @@unique([visitorId, customerId])
+  @@index([customerId])
+}
+
+model CustomerNote {
+  id         String   @id @default(uuid())
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id])
+  body       String
+  authorId   String
+  createdAt  DateTime @default(now())
+
+  @@index([customerId])
+}
+
+model CustomerTag {
+  id         String   @id @default(uuid())
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id])
+  tag        String
+  createdAt  DateTime @default(now())
+
+  @@unique([customerId, tag])
+  @@index([customerId])
+}
+
+model Lead {
+  id           String     @id @default(uuid())
+  status       LeadStatus @default(NEW)
+  source       LeadSource
+  visitorId    String?
+  sessionId    String?
+  customerId   String?
+  customer     Customer?  @relation(fields: [customerId], references: [id])
+  fullName     String?
+  email        String?
+  phone        String?
+  score        Int?
+  contactBasis String?
+  assigneeId   String?
+  optedOut     Boolean    @default(false)
+  optedOutAt   DateTime?
+  note         String?
+  scoreRecord  LeadScore?
+  assignments  LeadAssignment[]
+  followUpTasks FollowUpTask[]
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@index([status])
+  @@index([visitorId])
+  @@index([customerId])
+  @@index([assigneeId])
+}
+
+model LeadScore {
+  id         String   @id @default(uuid())
+  leadId     String   @unique
+  lead       Lead     @relation(fields: [leadId], references: [id])
+  score      Int
+  breakdown  Json?
+  computedAt DateTime @default(now())
+}
+
+model LeadAssignment {
+  id           String   @id @default(uuid())
+  leadId       String
+  lead         Lead     @relation(fields: [leadId], references: [id])
+  assigneeId   String
+  assignedById String
+  createdAt    DateTime @default(now())
+
+  @@index([leadId])
+}
+
+model FollowUpTask {
+  id          String    @id @default(uuid())
+  leadId      String
+  lead        Lead      @relation(fields: [leadId], references: [id])
+  title       String
+  dueAt       DateTime?
+  status      String    @default("open")
+  createdById String
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([leadId])
+  @@index([status])
+}
+
+/** A recorded opt-out: contact for this lead (and, when known, this
+ * customer or phone) is suppressed across leads and recovery. */
+model SuppressionRecord {
+  id         String   @id @default(uuid())
+  leadId     String?
+  customerId String?
+  phone      String?
+  reason     String
+  createdAt  DateTime @default(now())
+
+  @@index([customerId])
+  @@index([phone])
+}
+
+// ---------------------------------------------------------------------------
+// Cart Recovery and Communication (Phase 6)
+// ---------------------------------------------------------------------------
+//
+// Detection, the step sequence and the communication log. The
+// recovery token is unguessable and unique; the public token read
+// never exposes the contact fields stored here. A communication
+// log entry is marked SENT only on a provider-confirmed send;
+// unconfigured providers record NOT_CONFIGURED.
+
+enum AbandonedCartStatus {
+  DETECTED
+  IN_RECOVERY
+  RECOVERED
+  CLOSED
+  CANCELLED
+}
+
+enum CommunicationChannel {
+  WHATSAPP
+  EMAIL
+  SMS
+  CALL
+}
+
+enum CommunicationLogStatus {
+  SENT
+  NOT_CONFIGURED
+  FAILED
+  REFUSED_SUPPRESSED
+  REFUSED_CONSENT
+  REFUSED_NO_CONTACT
+  LOGGED
+  AWAITING_STAFF
+}
+
+enum RecoveryAttemptStatus {
+  SCHEDULED
+  EXECUTED
+  CANCELLED
+  SKIPPED
+}
+
+model AbandonedCart {
+  id                   String              @id @default(uuid())
+  cartId               String              @unique
+  cart                 Cart                @relation(fields: [cartId], references: [id])
+  customerId           String?
+  customer             Customer?           @relation(fields: [customerId], references: [id])
+  visitorId            String?
+  contactName          String?
+  contactPhone         String?
+  contactEmail         String?
+  contactBasis         String?
+  cartTotalMinor       Int
+  currency             String              @default("BDT")
+  itemCount            Int
+  status               AbandonedCartStatus @default(DETECTED)
+  closeReason          String?
+  recoveryToken        String              @unique
+  tokenExpiresAt       DateTime
+  detectedAt           DateTime            @default(now())
+  lastActivityAt       DateTime
+  recoveredOrderNumber String?
+  attempts             RecoveryAttempt[]
+  communications       CommunicationLog[]
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+
+  @@index([status])
+  @@index([customerId])
+}
+
+model RecoveryAttempt {
+  id                 String                @id @default(uuid())
+  abandonedCartId    String
+  abandonedCart      AbandonedCart         @relation(fields: [abandonedCartId], references: [id])
+  stepNumber         Int
+  channel            CommunicationChannel
+  templateKey        String
+  scheduledFor       DateTime
+  executedAt         DateTime?
+  status             RecoveryAttemptStatus @default(SCHEDULED)
+  outcome            String?
+  communicationLogId String?
+  queueJobId         String?
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+
+  @@index([abandonedCartId])
+  @@index([status])
+}
+
+model CommunicationLog {
+  id                String                 @id @default(uuid())
+  channel           CommunicationChannel
+  kind              String
+  status            CommunicationLogStatus
+  toAddress         String?
+  customerId        String?
+  customer          Customer?              @relation(fields: [customerId], references: [id])
+  visitorId         String?
+  leadId            String?
+  abandonedCartId   String?
+  abandonedCart     AbandonedCart?         @relation(fields: [abandonedCartId], references: [id])
+  templateKey       String?
+  subject           String?
+  body              String
+  callOutcome       String?
+  staffId           String?
+  providerMessageId String?
+  detail            String?
+  createdAt         DateTime               @default(now())
+
+  @@index([channel])
+  @@index([status])
+  @@index([customerId])
+  @@index([abandonedCartId])
+}
+
+/** One row per sequence step: the stored, staff-editable recovery
+ * sequence (the RecoveryCampaign data of the architecture docs). */
+model RecoverySequenceStep {
+  id           String               @id @default(uuid())
+  stepNumber   Int                  @unique
+  delayMinutes Int
+  channel      CommunicationChannel
+  templateKey  String
+  updatedAt    DateTime             @updatedAt
+}
+
+// ---------------------------------------------------------------------------
+// Shipping and Courier (Phase 6, chunk 2)
+// ---------------------------------------------------------------------------
+//
+// Courier booking and tracking for Pathao, Steadfast and RedX. A
+// shipment is NOT_CONFIGURED until a courier with merchant
+// credentials confirms the booking: trackingId stays null and no
+// booked state is invented. Courier raw statuses are preserved
+// verbatim on the shipment and on every event next to their
+// canonical mapping. Webhook deliveries are idempotent on
+// (courier, providerEventId), like the payment WebhookEvent.
+
+enum Courier {
+  PATHAO
+  STEADFAST
+  REDX
+}
+
+enum ShipmentStatus {
+  NOT_CONFIGURED
+  CREATED
+  PICKED_UP
+  IN_TRANSIT
+  DELIVERED
+  RETURNED
+  FAILED
+  CANCELLED
+}
+
+model Shipment {
+  id                  String         @id @default(uuid())
+  orderId             String
+  order               Order          @relation(fields: [orderId], references: [id])
+  orderNumber         String
+  courier             Courier
+  status              ShipmentStatus @default(NOT_CONFIGURED)
+  trackingId          String?
+  recipientName       String
+  recipientPhone      String
+  recipientAddress    String
+  codAmountMinor      Int            @default(0)
+  currency            String         @default("BDT")
+  weightKg            Float          @default(0.5)
+  notConfiguredReason String?
+  lastRawStatus       String?
+  createdById         String?
+  events              ShipmentEvent[]
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+
+  @@index([orderId])
+  @@index([status])
+  @@index([courier, trackingId])
+}
+
+model ShipmentEvent {
+  id         String         @id @default(uuid())
+  shipmentId String
+  shipment   Shipment       @relation(fields: [shipmentId], references: [id])
+  status     ShipmentStatus
+  rawStatus  String?
+  source     String
+  note       String?
+  createdAt  DateTime       @default(now())
+
+  @@index([shipmentId])
+}
+
+model CourierWebhookEvent {
+  id              String   @id @default(uuid())
+  courier         Courier
+  providerEventId String
+  shipmentId      String?
+  payload         Json
+  createdAt       DateTime @default(now())
+
+  @@unique([courier, providerEventId])
+}
