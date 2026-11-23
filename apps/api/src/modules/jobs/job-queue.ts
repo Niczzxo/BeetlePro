@@ -2,14 +2,15 @@
  * The job queue seam.
  *
  * The target architecture (docs/BACKEND_AND_DATABASE.md) runs
- * background work on Redis plus BullMQ. Neither is available in
- * this environment, so every delayed or recurring job in the API
- * goes through this interface instead of ad-hoc setTimeout calls
- * scattered through services. The provided implementation is an
- * in-process runner driven by timers; when Redis lands, a BullMQ
- * implementation replaces the provider binding in JobsModule and
- * no service changes: services only ever call enqueue,
- * registerProcessor and cancel.
+ * background work on Redis plus BullMQ. Every delayed or
+ * recurring job in the API goes through this interface instead of
+ * ad-hoc setTimeout calls scattered through services. Two
+ * implementations exist: an in-process runner driven by timers
+ * (the fallback when REDIS_URL is unset, and what the test suite
+ * drives) and a BullMQ implementation backed by Redis, selected
+ * in JobsModule when REDIS_URL is set. Services only ever call
+ * enqueue, registerProcessor and cancel, so the selection is
+ * invisible to them.
  *
  * Semantics kept deliberately close to BullMQ's:
  * - enqueue with a delay: the job runs no earlier than the delay.
@@ -19,6 +20,9 @@
  *   ran (or never existed) returns false and is not an error.
  * - A failing processor is logged and does not take down the
  *   runner or other jobs, mirroring the OrderEventBus rule.
+ * - enqueue, cancel and pendingCount are asynchronous because
+ *   the BullMQ implementation talks to Redis; the in-process
+ *   implementation resolves immediately.
  */
 
 export type JobHandler<TPayload = unknown> = (
@@ -46,10 +50,10 @@ export abstract class JobQueue {
     name: string,
     payload: TPayload,
     options?: EnqueueOptions,
-  ): string;
+  ): Promise<string>;
   /** Removes a pending job. Returns false when nothing pending
    * carries that id. */
-  abstract cancel(jobId: string): boolean;
+  abstract cancel(jobId: string): Promise<boolean>;
   /** Number of jobs currently waiting for their time. */
-  abstract pendingCount(): number;
+  abstract pendingCount(): Promise<number>;
 }

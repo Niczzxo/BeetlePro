@@ -53,11 +53,11 @@ export class InProcessJobQueue
     this.handlers.set(name, handler as JobHandler);
   }
 
-  enqueue<TPayload>(
+  async enqueue<TPayload>(
     name: string,
     payload: TPayload,
     options: EnqueueOptions = {},
-  ): string {
+  ): Promise<string> {
     const id = options.jobId ?? randomUUID();
     this.jobs.set(id, {
       id,
@@ -69,13 +69,13 @@ export class InProcessJobQueue
     return id;
   }
 
-  cancel(jobId: string): boolean {
+  async cancel(jobId: string): Promise<boolean> {
     const removed = this.jobs.delete(jobId);
     if (removed) this.armTimer();
     return removed;
   }
 
-  pendingCount(): number {
+  async pendingCount(): Promise<number> {
     return this.jobs.size;
   }
 

@@ -1,176 +1,228 @@
 # Prisma Migration: Swapping the In-Memory Repositories
 
-The API was built so this swap is a wiring change, not a
-rewrite. Every domain service depends on an abstract repository
-class; the in-memory classes are one implementation of those
-interfaces, and Prisma classes will be another. This document
-is the exact plan for the day a PostgreSQL host and Prisma
-engine downloads are available.
+Status: DONE (2026-11-24). The swap this document planned has
+been implemented and verified. The API now runs on real
+PostgreSQL through Prisma when DATABASE_URL is set, and on
+BullMQ through Redis when REDIS_URL is set; with either unset,
+the previous in-memory binding remains the default, so the
+existing test suite's default mode is unchanged. This document
+is kept as the record of what was done, including the places
+where reality differed from the plan.
 
-## Where things stand
+## What the swap looks like now
 
-- 15 repository interfaces under
-  `apps/api/src/modules/*/repositories/` (about 125 methods),
-  each with an in-memory implementation reading and writing
-  the shared `InMemoryDatabase` from `StoreModule`.
-- The Prisma schema at `packages/database/prisma/schema.prisma`
-  has been extended every phase alongside the domain types:
-  42 models covering catalog, carts, orders, payments,
-  refunds, webhooks, identity and sessions, audit, visitors
-  and consent, leads and CRM, cart recovery, communications
-  and shipments.
-- Two in-memory shapes have no schema counterpart yet and
-  must be settled first (next section).
-- Nothing Prisma-generated has ever run in the environment
-  the code was written in: the Prisma engine download host
-  was unreachable there, so `prisma validate` and
-  `prisma generate` have never executed against this schema.
-  The schema is consistent by construction (it mirrors the
-  TypeScript domain types field by field), but step 1 below
-  exists because the first real run may still surface small
-  schema fixes.
+- Every repository interface (16, under
+  `apps/api/src/modules/*/repositories/` plus the store
+  settings seam in `apps/api/src/store/`) has two
+  implementations in the same folder: `in-memory-*.repository.ts`
+  and `prisma-*.repository.ts`.
+- Repository methods are async and accept an optional trailing
+  transaction client (`Tx`, from
+  `apps/api/src/prisma/prisma.service.ts`). The in-memory
+  classes ignore it; the Prisma classes run through it when a
+  transactional flow hands one down.
+- `apps/api/src/prisma/` holds PrismaService (lazy PrismaClient
+  wrapper), PrismaModule (global; also provides OrderEventBus,
+  the transaction runner and the Prisma settings repository),
+  transaction-runner.ts (TransactionRunner with
+  PrismaTransactionRunner and NoopTransactionRunner) and
+  prisma.helpers.ts (enum, money and date mappers: domain
+  kebab-case unions convert to schema SCREAMING_SNAKE and back).
+- Selection is by environment, per module:
+  `useClass: process.env.DATABASE_URL ? PrismaXRepository :
+  InMemoryXRepository`, and AppModule imports PrismaModule
+  instead of StoreModule under the same condition. JobsModule
+  binds BullMqJobQueue when REDIS_URL is set and
+  InProcessJobQueue otherwise.
+- Seeding: `src/seed/seed-catalogue.ts` builds the catalogue as
+  domain objects once; SeedService loads it into the in-memory
+  store and PrismaSeedService inserts it through Prisma when
+  the Product table is empty. Both bindings start from exactly
+  the same catalogue (22 products, 8 categories).
 
-## Schema gaps to close first
+## Schema gaps: the two planned, and three more found
 
-1. **Stock reservations.** The in-memory inventory tracks
-   per-variant onHand and reserved counts plus per-order
-   reservation lines (reserved at placement, released on
-   cancellation, settled on delivery). The schema has only
-   `ProductVariant.stock`. Add a `StockReservation` model
-   (orderId, variantId, quantity, state, timestamps) and treat
-   `ProductVariant.stock` as on-hand; availability stays
-   on-hand minus active reservations, exactly as the
-   in-memory implementation computes it.
-2. **Store settings.** The free-delivery offer switch and the
-   manual mobile-banking receiving instructions live only on
-   the in-memory store (`db.settings`), read directly by
-   `CheckoutService` and `ManualMobileBankingProvider`, the
-   two remaining direct `InMemoryDatabase` touchpoints outside
-   repositories and seeding. Give them a `StoreSettings`
-   model behind a small settings repository (or an explicit
-   decision to source them from configuration), and rewire
-   those two readers to it as part of the swap.
+The plan named two gaps; both were closed as specified:
 
-## Repository to model mapping
+1. **Stock reservations.** `StockReservation` model added
+   (orderId as a plain indexed string with no relation, to
+   avoid relation write-ordering hazards; variantId related to
+   ProductVariant; quantity; state enum ACTIVE, RELEASED,
+   FINALIZED). `ProductVariant.stock` is on-hand; reserved is
+   the sum of ACTIVE reservation quantities; availability is
+   on-hand minus active reservations.
+2. **Store settings.** `StoreSettings` singleton model (row id
+   "store": freeDeliveryOffer, manualInstructions JSON) behind
+   the SettingsRepository seam in `apps/api/src/store/`.
+   CheckoutService and ManualMobileBankingProvider, the two
+   former direct InMemoryDatabase readers, were rewired to it.
+
+Implementation surfaced three more gaps the plan did not name,
+each closed with the smallest change that carries the domain
+data:
+
+3. **Lead contact attempts had no model.** The domain type
+   LeadContactAttempt existed since Phase 5 with no schema
+   counterpart. Added a `LeadContactAttempt` model mirroring
+   the type (channel and result as plain strings, following
+   the FollowUpTask.status precedent).
+4. **Session.replacedById had no column.** AuthService.refresh
+   tells a rotated token's reuse apart from a plain revocation
+   by this marker; without it, family revocation on reuse
+   silently did not happen in Prisma mode (caught by the
+   integration suite). Added `Session.replacedById String?`.
+5. **Recovery settings scalars had no home.** The sequence
+   steps live in RecoverySequenceStep as designed, but
+   abandonedAfterMinutes and tokenTtlDays had nowhere to
+   persist. Added one JSON column, `StoreSettings.
+   recoverySettings`, for the pair.
+
+Two schema errors were also fixed at the first ever
+`prisma validate` run: missing opposite relation fields
+(`Product.cartItems`, `Customer.visitorSessions`). The schema
+now validates clean, and `prisma db push` reports the local
+database in sync at 45 tables.
+
+## Repository to model mapping (as implemented)
 
 | Repository interface | Prisma models |
 |---|---|
 | CatalogRepository | Category, Product, ProductVariant, ProductMedia |
-| InventoryRepository | ProductVariant (stock), StockReservation (to add) |
-| CustomersRepository | Customer, CustomerAddress |
-| AdminsRepository | AdminUser, Role, Permission, AdminUserRole, RolePermission |
-| SessionsRepository | Session |
+| InventoryRepository | ProductVariant (stock), StockReservation |
+| CustomersRepository | User, Customer, CustomerAddress |
+| AdminsRepository | User, AdminUser, Role, AdminUserRole |
+| SessionsRepository | Session (owner resolved through User) |
 | CartsRepository | Cart, CartItem |
 | OrdersRepository | Order, OrderItem, OrderAddress, OrderStatusEvent |
 | PaymentsRepository | Payment, PaymentEvent, Refund, WebhookEvent |
 | AuditRepository | AuditLog |
 | VisitorsRepository | VisitorSession, VisitorEvent, ConsentRecord, IdentityLink |
-| LeadsRepository | Lead, LeadScore, LeadAssignment, FollowUpTask, SuppressionRecord |
-| CrmRepository | CustomerNote, CustomerTag (plus reads over orders and visitors) |
+| LeadsRepository | Lead, LeadContactAttempt, FollowUpTask, SuppressionRecord |
+| CrmRepository | CustomerNote |
 | CommunicationsRepository | CommunicationLog |
-| CartRecoveryRepository | AbandonedCart, RecoveryAttempt, RecoverySequenceStep |
+| CartRecoveryRepository | AbandonedCart, RecoveryAttempt, RecoverySequenceStep, StoreSettings (settings scalars) |
 | ShippingRepository | Shipment, ShipmentEvent, CourierWebhookEvent |
+| SettingsRepository | StoreSettings |
 
-Enum values in the schema mirror the `@dostelo/types` unions;
-money stays integer minor units plus a currency string, and
-timestamps stay UTC, matching the domain types.
+Mapping notes worth knowing:
 
-## Commands, in order
+- Customers and admins are split across User (identity and
+  password hash) and their profile models. A registered
+  customer gets a User row linked from Customer.userId, because
+  refresh sessions hang off User; a guest customer stays
+  unlinked, exactly as the domain record holds it. Admin roles
+  are Role rows whose key is the AdminRole key itself.
+- OrderItem carries no timestamp or position column, so line
+  order is the database's return order; nothing in the domain
+  depends on it (lines are keyed by variant).
+- PaymentEvent.status is nullable in the schema, matching the
+  domain type.
 
-Run from the repository root on a machine that can reach the
-Prisma engine CDN, with `DATABASE_URL` set (see
-`.env.example`):
+## Transaction boundaries (as implemented)
 
-```bash
-pnpm install --frozen-lockfile
-pnpm --filter @dostelo/database validate     # first ever validation; fix what it reports
-pnpm --filter @dostelo/database generate     # generates @prisma/client
-pnpm --filter @dostelo/database exec prisma migrate dev --name init
-```
+The four flows from the plan run inside interactive
+transactions, threaded by the optional Tx parameter and the
+TransactionRunner seam:
 
-Then wire seeding: add a `prisma.seed` entry to
-`packages/database/package.json` pointing at a seed script
-that inserts the same catalogue `SeedService` loads today
-(the data already exists as generated seed data in
-`apps/api/src/seed/catalog.seed.ts`), plus the store
-settings defaults. Run it with
-`pnpm --filter @dostelo/database exec prisma db seed`.
-
-## Binding the Prisma implementations
-
-Each Nest module registers its repository as
-`{ provide: XRepository, useClass: InMemoryXRepository }`.
-The swap, per module:
-
-1. Write `PrismaXRepository extends XRepository` in the same
-   `repositories/` folder, implementing the same methods over
-   an injected `PrismaService` (a thin `OnModuleInit` wrapper
-   around `PrismaClient`, provided by a new global
-   `PrismaModule` that replaces `StoreModule`'s role).
-2. Change the module's `useClass` to the Prisma class. No
-   service, controller or test-context signature changes:
-   they all program against the abstract class.
-3. Retire `StoreModule` and `InMemoryDatabase` only after
-   every module has swapped and the suite is green (below).
-   `SeedService` is replaced by the Prisma seed script.
-
-## Transaction boundaries
-
-The in-memory store is single-threaded, so multi-repository
-operations are atomic by construction today. Under Prisma
-they are not, and these flows must run inside
-`prisma.$transaction` (interactive transactions, so the
-service logic stays as written):
-
-- **Order placement** (`CheckoutService.placeOrder`): order,
-  items and status event, stock reservations, payment
-  attempt, customer order counter, lead conversion and cart
-  recovery marking commit or roll back together.
-- **Order status transitions** (`OrdersService.transition`):
-  status, status event, reservation release or settlement,
-  and the COD payment sync that follows from it.
-- **Payment verify and refunds** (`PaymentsService`): payment
-  status, payment events, refund records and the order's
-  mirrored payment status.
+- **Order placement** (CheckoutService.placeOrder): the writes
+  from order creation onward (order, status event, stock
+  reservations, payment attempt, customer counters, lead
+  conversion snapshot and marking, guest identity link, cart
+  recovery marking, cart conversion) commit or roll back
+  together. The open-lead snapshot is still taken before
+  linking, preserving the Phase 7 conversion fix. Queue
+  cancellations inside recovery marking are non-transactional
+  side effects, accepted and documented in the service: a late
+  step against a recovered record is a no-op, and the scan can
+  reschedule.
+- **Order status transitions** (OrdersService.transition):
+  order save, status event and reservation release or finalize
+  in one transaction; the event bus emit happens after commit.
+- **Payment verify and refunds** (PaymentsService): status
+  changes, events, refund records and the order's mirrored
+  payment status; the provider network step in requestRefund
+  stays outside the transaction, between the record write and
+  the settle write.
 - **Webhook application** (payments and couriers): the
-  idempotency record and the state change it authorizes are
-  one unit, so a crash cannot record a delivery without
-  applying it, or apply it twice.
+  idempotency record and the authorized state change are one
+  unit. Webhook recording also survives a concurrent
+  redelivery: the unique constraint fires and the stored
+  record is returned as the duplicate.
 
-The practical pattern: a transaction-scoped client handed
-down from the service entry point. Repository methods gain an
-optional transaction client parameter defaulting to the root
-client; only the four flows above pass one. Keep the
-in-memory implementations signature-compatible (they ignore
-the parameter) so both bindings satisfy the same interfaces.
+Audit appends deliberately stay outside transactions (the log
+is append-only and records attempts as well as commits).
 
-## Test strategy
+## The BullMQ half (as implemented)
 
-The service suites are the contract, and they were written
-against interfaces, not against the in-memory classes:
+`apps/api/src/modules/jobs/bullmq-job-queue.ts` implements the
+JobQueue seam over one queue named dostelo-jobs and one
+worker, dispatching by job name to the registered processors,
+created lazily from REDIS_URL. The API passes its own ioredis
+instances (BullMQ 6 loads its Redis client as an optional
+peer, so apps/api depends on ioredis directly). Two mapping
+notes: BullMQ rejects ':' in caller-chosen job ids, so ids are
+stored with ':' replaced by '__' and translated back on
+cancel (the seam's callers use ids such as
+`recovery-step:<attemptId>`); and completed or failed jobs are
+removed immediately, so cancelling a job that already ran
+returns false, as the seam specifies. Cart recovery code did
+not change.
 
-1. Add `createPrismaTestContext()` beside
-   `apps/api/src/testing/test-context.ts`, wiring the same
-   service graph over Prisma repositories against a scratch
-   database (the docker-compose PostgreSQL), migrated fresh
-   and truncated between tests.
-2. Parameterize the existing spec files over the context
-   factory and run the identical assertions against both
-   bindings. Any behavioral difference is a bug in the new
-   binding, not a test to edit.
-3. Gate the Prisma runs behind `DOSTELO_TEST_DATABASE_URL`
-   so the default suite stays hermetic and fast; run the
-   Prisma variant in CI with a PostgreSQL service container
-   once the repository is on GitHub.
-4. The HTTP security suite and the route guard inventory do
-   not touch repositories and need no changes.
+## One regression the swap surfaced, fixed
 
-## The BullMQ half of the swap
+Making the services async exposed 16 controller sites that
+embedded a service call in a response object without awaiting
+it (`return { items: this.service.list(...) }`), which
+serialized a Promise as `{}`. Service-level tests cannot see
+this; the live HTTP checks did. All 16 sites (catalog, orders,
+admin orders, customers, inventory, leads, CRM, payments,
+shipping, audit, buyer intelligence, communications, cart
+recovery) now await. A directly returned promise was never a
+problem: Nest flattens it.
 
-Separate from Prisma but usually done in the same pass:
-`apps/api/src/modules/jobs` defines the `JobQueue` interface
-the cart-recovery worker already uses. A BullMQ
-implementation over `REDIS_URL` replaces the in-process
-class in `jobs.module.ts`; no recovery code changes. Do it
-after Prisma, so scheduled recovery steps survive restarts
-on top of data that also survives restarts.
+## Test strategy (as executed)
+
+- The default suite stays on the in-memory context:
+  202 tests, unchanged, still 100 percent green. Specs that
+  read `ctx.db` directly (for example, ageing a cart by
+  mutating the store) are in-memory-only by design; they were
+  not parameterized, because their assertions are about the
+  store's own mechanics.
+- `createPrismaTestContext()` in
+  `apps/api/src/testing/prisma-test-context.ts` builds the
+  same service graph over the Prisma repositories with the
+  real transaction runner, against DOSTELO_TEST_DATABASE_URL
+  (a disposable database; the context truncates all tables and
+  reseeds per test).
+- `apps/api/src/testing/prisma-integration.spec.ts` covers the
+  equivalent core flows at the service level: seeding, customer
+  registration, login and refresh rotation with family
+  revocation, admin login through the User and Role rows,
+  transactional COD placement with stock reservation,
+  cancellation releasing the reservation, manual bKash
+  verification, visitor consent behaviour, and cart recovery
+  detection with a settings round trip. 8 tests, all passing;
+  with DOSTELO_TEST_DATABASE_URL set the full run is 210
+  passing, and without it the 8 skip cleanly.
+- Live HTTP proof was run against the compiled API with
+  DATABASE_URL and REDIS_URL set: register, order placement,
+  aged-cart scan scheduling a recovery step through BullMQ
+  (both delayed jobs visible in Redis, the recurring scan job
+  consumed and re-armed by the worker), then two API restarts
+  with the customer, order and recovery still served.
+
+## Environment note: Prisma engines in this sandbox
+
+Prisma's own engine download fails here (ECONNRESET from
+binaries.prisma.sh through the proxy), although the host is
+reachable: curl through the same proxy downloads both engines
+with HTTP 200. The engines (commit
+c2990dca591cba766e3b7ef5d9e8a84796e47ab7, debian-openssl-3.0.x)
+are cached under ~/.cache/prisma-engines/, and Prisma commands
+and the API process run with PRISMA_SCHEMA_ENGINE_BINARY and
+PRISMA_QUERY_ENGINE_LIBRARY pointing at them. On a normal host
+none of this is needed: `prisma generate` downloads its
+engines itself. Local services for development: PostgreSQL 16
+and Redis 7 via apt, a `dostelo` database and user, and a
+`dostelo_test` database for the integration suite, with
+connection strings only in the git-ignored root .env.

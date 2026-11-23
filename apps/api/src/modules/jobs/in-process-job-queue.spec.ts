@@ -14,9 +14,9 @@ describe('InProcessJobQueue', () => {
     queue.registerProcessor('test.job', (payload: { name: string }) => {
       seen.push(payload.name);
     });
-    queue.enqueue('test.job', { name: 'late' }, { delayMs: 120_000 });
-    queue.enqueue('test.job', { name: 'early' }, { delayMs: 60_000 });
-    queue.enqueue('test.job', { name: 'now' });
+    await queue.enqueue('test.job', { name: 'late' }, { delayMs: 120_000 });
+    await queue.enqueue('test.job', { name: 'early' }, { delayMs: 60_000 });
+    await queue.enqueue('test.job', { name: 'now' });
 
     expect(await queue.runDue()).toBe(1);
     expect(seen).toEqual(['now']);
@@ -28,7 +28,7 @@ describe('InProcessJobQueue', () => {
     now += 60_000;
     expect(await queue.runDue()).toBe(1);
     expect(seen).toEqual(['now', 'early', 'late']);
-    expect(queue.pendingCount()).toBe(0);
+    expect(await queue.pendingCount()).toBe(0);
   });
 
   it('cancel removes a pending job and reports false afterwards', async () => {
@@ -38,14 +38,14 @@ describe('InProcessJobQueue', () => {
     queue.registerProcessor('test.job', (payload: { name: string }) => {
       seen.push(payload.name);
     });
-    const id = queue.enqueue(
+    const id = await queue.enqueue(
       'test.job',
       { name: 'never' },
       { delayMs: 1000, jobId: 'fixed-id' },
     );
     expect(id).toBe('fixed-id');
-    expect(queue.cancel('fixed-id')).toBe(true);
-    expect(queue.cancel('fixed-id')).toBe(false);
+    expect(await queue.cancel('fixed-id')).toBe(true);
+    expect(await queue.cancel('fixed-id')).toBe(false);
     now += 5000;
     expect(await queue.runDue()).toBe(0);
     expect(seen).toEqual([]);
@@ -60,8 +60,8 @@ describe('InProcessJobQueue', () => {
     queue.registerProcessor('test.ok', (payload: { name: string }) => {
       seen.push(payload.name);
     });
-    queue.enqueue('test.boom', {});
-    queue.enqueue('test.ok', { name: 'after' });
+    await queue.enqueue('test.boom', {});
+    await queue.enqueue('test.ok', { name: 'after' });
     const errors: unknown[] = [];
     const original = console.error;
     console.error = (...args: unknown[]) => errors.push(args);
@@ -80,10 +80,10 @@ describe('InProcessJobQueue', () => {
     queue.registerProcessor('test.chain', (payload: { step: number }) => {
       seen.push(`step-${payload.step}`);
       if (payload.step < 3) {
-        queue.enqueue('test.chain', { step: payload.step + 1 });
+        void queue.enqueue('test.chain', { step: payload.step + 1 });
       }
     });
-    queue.enqueue('test.chain', { step: 1 });
+    await queue.enqueue('test.chain', { step: 1 });
     expect(await queue.runDue()).toBe(3);
     expect(seen).toEqual(['step-1', 'step-2', 'step-3']);
   });
