@@ -1,7 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { permissionsForRoles } from '@dostelo/types';
 import type { CheckoutRequest } from '@dostelo/validation';
 import { hashPassword } from '../common/password';
+import type { AuthPrincipal } from '../common/auth/principal';
 import {
   createPrismaTestContext,
   findPrismaVariant,
@@ -28,6 +30,16 @@ const DHAKA_ADDRESS = {
   city: 'Dhaka',
   district: 'Dhaka',
 };
+
+const prismaActor: AuthPrincipal = {
+  type: 'admin',
+  id: 'admin-prisma-1',
+  name: 'Prisma Tester',
+  roles: ['super-admin'],
+  permissions: permissionsForRoles(['super-admin']),
+};
+
+const prismaPrincipal: AuthPrincipal = { ...prismaActor };
 
 describe.skipIf(!ENABLED)('Prisma repositories (integration)', () => {
   let ctx: PrismaTestContext;
@@ -270,5 +282,175 @@ describe.skipIf(!ENABLED)('Prisma repositories (integration)', () => {
     const reloaded = await ctx.cartRecoveryRepo.getSettings();
     expect(reloaded.tokenTtlDays).toBe(7);
     expect(reloaded.steps).toHaveLength(3);
+  });
+
+  it('runs a full return against Prisma: restock, order returned, refund recorded', async () => {
+    const customer = await registerCustomer();
+    const order = await ctx.checkout.placeOrder(
+      await codRequest(customer.id),
+    );
+    for (const status of [
+      'confirmed',
+      'processing',
+      'packed',
+      'ready-to-ship',
+      'shipped',
+      'out-for-delivery',
+      'delivered',
+    ] as const) {
+      await ctx.ordersService.transition(order.orderNumber, { status });
+    }
+    const delivered = await ctx.ordersService.getByNumber(order.orderNumber);
+    const item = delivered.items[0]!;
+    const { variant } = await findPrismaVariant(
+      ctx,
+      'sneakers-court',
+      'EU 41',
+      'White',
+    );
+    const stockBefore = await ctx.inventoryService.getStock(variant.id);
+    const request = await ctx.returns.create(
+      {
+        orderNumber: order.orderNumber,
+        kind: 'return',
+        items: [{ orderItemId: item.id, quantity: item.quantity }],
+      },
+      prismaActor,
+    );
+    const approved = await ctx.returns.approve(request.id, prismaActor);
+    expect(approved.status).toBe('approved');
+    expect(approved.restocked).toBe(true);
+    const stockAfter = await ctx.inventoryService.getStock(variant.id);
+    expect(stockAfter.onHand).toBe(stockBefore.onHand + item.quantity);
+    expect(
+      (await ctx.ordersService.getByNumber(order.orderNumber)).status,
+    ).toBe('returned');
+    const handOff = await ctx.returns.handOffRefund(request.id, prismaActor);
+    expect(handOff.request.refundState).toBe('handed-off');
+    const completed = await ctx.returns.complete(request.id, prismaActor);
+    expect(completed.status).toBe('completed');
+  });
+
+  it('round-trips the admin-ops seams: tickets, reviews, campaigns, loyalty, legal, settings', async () => {
+    const ticket = await ctx.support.create(
+      {
+        customerName: 'Prisma Caller',
+        customerPhone: '01712345678',
+        subject: 'Prisma ticket',
+        message: 'Opening words',
+      },
+      prismaActor,
+    );
+    const replied = await ctx.support.reply(
+      ticket.id,
+      { body: 'Staff answer' },
+      prismaActor,
+    );
+    expect(replied.status).toBe('pending');
+    expect(replied.messages).toHaveLength(2);
+
+    const review = await ctx.reviews.create(
+      {
+        productId: 'sneakers-court',
+        authorName: 'Prisma Reviewer',
+        rating: 5,
+        body: 'Great shoes.',
+      },
+      prismaActor,
+    );
+    expect(review.status).toBe('pending');
+    const approved = await ctx.reviews.setStatus(
+      review.id,
+      'approved',
+      prismaActor,
+    );
+    expect(approved.status).toBe('approved');
+
+    const campaign = await ctx.marketing.create(
+      {
+        name: 'Prisma campaign',
+        channel: 'email',
+        audienceNote: 'All customers',
+      },
+      prismaActor,
+    );
+    expect(campaign.status).toBe('draft');
+    expect(campaign.sending.configured).toBe(false);
+
+    const customer = await registerCustomer();
+    const balance = await ctx.loyalty.adjust(
+      customer.id,
+      { delta: 25, reason: 'Prisma grant' },
+      prismaActor,
+    );
+    expect(balance.balancePoints).toBe(25);
+    const reread = await ctx.loyalty.balanceFor(customer.id);
+    expect(reread.adjustmentPoints).toBe(25);
+
+    const legal = await ctx.legal.update(
+      'terms',
+      { title: 'Terms of Service', body: 'Prisma terms body.' },
+      prismaActor,
+    );
+    expect(legal.stored).toBe(true);
+    expect((await ctx.legal.get('terms')).body).toBe('Prisma terms body.');
+
+    const settings = await ctx.website.updateSettings(
+      {
+        storeName: 'Dostelo Prisma',
+        deliveryFees: {
+          dhakaCityMinor: 7500,
+          dhakaSubCityMinor: 10500,
+          outsideDhakaMinor: 15500,
+          codFeeMinor: 1200,
+        },
+      },
+      prismaActor,
+    );
+    expect(settings.deliveryFees.dhakaCityMinor).toBe(7500);
+    const settingsReread = await ctx.website.getSettings();
+    expect(settingsReread.storeName).toBe('Dostelo Prisma');
+    expect(settingsReread.deliveryFees.codFeeMinor).toBe(1200);
+  });
+
+  it('creates staff through Prisma and records a backup export', async () => {
+    // A pending order guarantees the notification feed has an
+    // entry whose read state can round-trip.
+    const buyer = await registerCustomer();
+    await ctx.checkout.placeOrder(await codRequest(buyer.id));
+    const created = await ctx.staff.create(
+      {
+        email: 'prisma-agent@example.com',
+        displayName: 'Prisma Agent',
+        roles: ['sales-agent'],
+        temporaryPassword: 'temp-pass-123',
+      },
+      prismaActor,
+    );
+    const login = await ctx.auth.loginAdmin(
+      { email: 'prisma-agent@example.com', password: 'temp-pass-123' },
+      null,
+    );
+    expect('accessToken' in login).toBe(true);
+    const list = await ctx.staff.list();
+    expect(
+      list.find((entry) => entry.id === created.id)?.activeSessions,
+    ).toBe(1);
+
+    const feed = await ctx.notifications.feed(prismaPrincipal);
+    expect(feed.unread).toBe(feed.items.length);
+    if (feed.items.length > 0) {
+      await ctx.notifications.markRead(prismaPrincipal, [
+        feed.items[0]!.key,
+      ]);
+      const after = await ctx.notifications.feed(prismaPrincipal);
+      expect(after.unread).toBe(feed.unread - 1);
+    }
+
+    const result = await ctx.backup.createExport(prismaActor);
+    expect(result.record.counts['products']).toBe(22);
+    expect(JSON.stringify(result.export)).not.toContain('passwordHash');
+    const history = await ctx.backup.listExports();
+    expect(history.map((entry) => entry.id)).toContain(result.record.id);
   });
 });

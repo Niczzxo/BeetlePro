@@ -52,6 +52,28 @@ import { FetchCourierHttpClient } from '../modules/shipping/providers/courier-ht
 import { PathaoProvider } from '../modules/shipping/providers/pathao.provider';
 import { SteadfastProvider } from '../modules/shipping/providers/steadfast.provider';
 import { RedxProvider } from '../modules/shipping/providers/redx.provider';
+import { ReturnsService } from '../modules/returns/returns.service';
+import { PrismaReturnsRepository } from '../modules/returns/repositories/prisma-returns.repository';
+import { SupportService } from '../modules/support/support.service';
+import { PrismaSupportRepository } from '../modules/support/repositories/prisma-support.repository';
+import { ReviewsService } from '../modules/reviews/reviews.service';
+import { PrismaReviewsRepository } from '../modules/reviews/repositories/prisma-reviews.repository';
+import { MarketingService } from '../modules/marketing/marketing.service';
+import { PrismaMarketingRepository } from '../modules/marketing/repositories/prisma-marketing.repository';
+import { LoyaltyService } from '../modules/loyalty/loyalty.service';
+import { PrismaLoyaltyRepository } from '../modules/loyalty/repositories/prisma-loyalty.repository';
+import { ReportsService } from '../modules/reports/reports.service';
+import { WebsiteService } from '../modules/website/website.service';
+import { NotificationsService } from '../modules/notifications/notifications.service';
+import { PrismaNotificationsRepository } from '../modules/notifications/repositories/prisma-notifications.repository';
+import { StaffService } from '../modules/staff/staff.service';
+import { IntegrationsService } from '../modules/integrations/integrations.service';
+import { LegalService } from '../modules/legal/legal.service';
+import { PrismaLegalRepository } from '../modules/legal/repositories/prisma-legal.repository';
+import { BackupService } from '../modules/backup/backup.service';
+import { PrismaBackupRepository } from '../modules/backup/repositories/prisma-backup.repository';
+import { AutomationService } from '../modules/automation/automation.service';
+import type { SettingsRepository } from '../store/settings.repository';
 
 /**
  * The Prisma counterpart of createTestContext (docs/
@@ -99,6 +121,28 @@ export interface PrismaTestContext {
   shippingRepo: PrismaShippingRepository;
   shippingRegistry: CourierProviderRegistry;
   shipping: ShippingService;
+  settingsRepo: SettingsRepository;
+  returnsRepo: PrismaReturnsRepository;
+  returns: ReturnsService;
+  supportRepo: PrismaSupportRepository;
+  support: SupportService;
+  reviewsRepo: PrismaReviewsRepository;
+  reviews: ReviewsService;
+  marketingRepo: PrismaMarketingRepository;
+  marketing: MarketingService;
+  loyaltyRepo: PrismaLoyaltyRepository;
+  loyalty: LoyaltyService;
+  reports: ReportsService;
+  website: WebsiteService;
+  notificationsRepo: PrismaNotificationsRepository;
+  notifications: NotificationsService;
+  staff: StaffService;
+  integrations: IntegrationsService;
+  legalRepo: PrismaLegalRepository;
+  legal: LegalService;
+  backupRepo: PrismaBackupRepository;
+  backup: BackupService;
+  automation: AutomationService;
   dispose: () => Promise<void>;
 }
 
@@ -242,6 +286,57 @@ export async function createPrismaTestContext(): Promise<PrismaTestContext> {
     shippingRegistry,
     audit,
   );
+  const returnsRepo = new PrismaReturnsRepository(prisma);
+  const returns = new ReturnsService(
+    returnsRepo,
+    ordersService,
+    inventory,
+    paymentsRepo,
+    payments,
+    audit,
+  );
+  const supportRepo = new PrismaSupportRepository(prisma);
+  const support = new SupportService(supportRepo, customersRepo, audit);
+  const reviewsRepo = new PrismaReviewsRepository(prisma);
+  const reviews = new ReviewsService(reviewsRepo, catalog, orders, audit);
+  const marketingRepo = new PrismaMarketingRepository(prisma);
+  const marketing = new MarketingService(marketingRepo, audit);
+  const loyaltyRepo = new PrismaLoyaltyRepository(prisma);
+  const loyalty = new LoyaltyService(
+    loyaltyRepo,
+    orders,
+    customersRepo,
+    settings,
+    audit,
+  );
+  const reports = new ReportsService(orders, paymentsRepo, cartRecoveryRepo);
+  const website = new WebsiteService(settings, audit);
+  const notificationsRepo = new PrismaNotificationsRepository(prisma);
+  const notifications = new NotificationsService(
+    notificationsRepo,
+    orders,
+    inventory,
+    catalog,
+    cartRecoveryRepo,
+  );
+  const staff = new StaffService(adminsRepo, sessionsRepo, audit);
+  const integrations = new IntegrationsService();
+  const legalRepo = new PrismaLegalRepository(prisma);
+  const legal = new LegalService(legalRepo, audit);
+  const backupRepo = new PrismaBackupRepository(prisma);
+  const backup = new BackupService(
+    backupRepo,
+    catalog,
+    customersRepo,
+    orders,
+    paymentsRepo,
+    leadsRepo,
+    cartRecoveryRepo,
+    shippingRepo,
+    settings,
+    audit,
+  );
+  const automation = new AutomationService(cartRecovery);
 
   return {
     prisma,
@@ -278,6 +373,28 @@ export async function createPrismaTestContext(): Promise<PrismaTestContext> {
     shippingRepo,
     shippingRegistry,
     shipping,
+    settingsRepo: settings,
+    returnsRepo,
+    returns,
+    supportRepo,
+    support,
+    reviewsRepo,
+    reviews,
+    marketingRepo,
+    marketing,
+    loyaltyRepo,
+    loyalty,
+    reports,
+    website,
+    notificationsRepo,
+    notifications,
+    staff,
+    integrations,
+    legalRepo,
+    legal,
+    backupRepo,
+    backup,
+    automation,
     dispose: async () => {
       await prisma.onModuleDestroy();
     },

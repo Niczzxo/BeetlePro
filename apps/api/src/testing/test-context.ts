@@ -51,6 +51,28 @@ import { FetchCourierHttpClient } from '../modules/shipping/providers/courier-ht
 import { PathaoProvider } from '../modules/shipping/providers/pathao.provider';
 import { SteadfastProvider } from '../modules/shipping/providers/steadfast.provider';
 import { RedxProvider } from '../modules/shipping/providers/redx.provider';
+import { ReturnsService } from '../modules/returns/returns.service';
+import { InMemoryReturnsRepository } from '../modules/returns/repositories/in-memory-returns.repository';
+import { SupportService } from '../modules/support/support.service';
+import { InMemorySupportRepository } from '../modules/support/repositories/in-memory-support.repository';
+import { ReviewsService } from '../modules/reviews/reviews.service';
+import { InMemoryReviewsRepository } from '../modules/reviews/repositories/in-memory-reviews.repository';
+import { MarketingService } from '../modules/marketing/marketing.service';
+import { InMemoryMarketingRepository } from '../modules/marketing/repositories/in-memory-marketing.repository';
+import { LoyaltyService } from '../modules/loyalty/loyalty.service';
+import { InMemoryLoyaltyRepository } from '../modules/loyalty/repositories/in-memory-loyalty.repository';
+import { ReportsService } from '../modules/reports/reports.service';
+import { WebsiteService } from '../modules/website/website.service';
+import { NotificationsService } from '../modules/notifications/notifications.service';
+import { InMemoryNotificationsRepository } from '../modules/notifications/repositories/in-memory-notifications.repository';
+import { StaffService } from '../modules/staff/staff.service';
+import { IntegrationsService } from '../modules/integrations/integrations.service';
+import { LegalService } from '../modules/legal/legal.service';
+import { InMemoryLegalRepository } from '../modules/legal/repositories/in-memory-legal.repository';
+import { BackupService } from '../modules/backup/backup.service';
+import { InMemoryBackupRepository } from '../modules/backup/repositories/in-memory-backup.repository';
+import { AutomationService } from '../modules/automation/automation.service';
+import type { SettingsRepository } from '../store/settings.repository';
 
 /**
  * Builds the full service graph over a fresh seeded in-memory
@@ -91,6 +113,28 @@ export interface TestContext {
   shippingRepo: InMemoryShippingRepository;
   shippingRegistry: CourierProviderRegistry;
   shipping: ShippingService;
+  settingsRepo: SettingsRepository;
+  returnsRepo: InMemoryReturnsRepository;
+  returns: ReturnsService;
+  supportRepo: InMemorySupportRepository;
+  support: SupportService;
+  reviewsRepo: InMemoryReviewsRepository;
+  reviews: ReviewsService;
+  marketingRepo: InMemoryMarketingRepository;
+  marketing: MarketingService;
+  loyaltyRepo: InMemoryLoyaltyRepository;
+  loyalty: LoyaltyService;
+  reports: ReportsService;
+  website: WebsiteService;
+  notificationsRepo: InMemoryNotificationsRepository;
+  notifications: NotificationsService;
+  staff: StaffService;
+  integrations: IntegrationsService;
+  legalRepo: InMemoryLegalRepository;
+  legal: LegalService;
+  backupRepo: InMemoryBackupRepository;
+  backup: BackupService;
+  automation: AutomationService;
 }
 
 export function createTestContext(): TestContext {
@@ -209,6 +253,57 @@ export function createTestContext(): TestContext {
     shippingRegistry,
     audit,
   );
+  const returnsRepo = new InMemoryReturnsRepository(db);
+  const returns = new ReturnsService(
+    returnsRepo,
+    ordersService,
+    inventory,
+    paymentsRepo,
+    payments,
+    audit,
+  );
+  const supportRepo = new InMemorySupportRepository(db);
+  const support = new SupportService(supportRepo, customersRepo, audit);
+  const reviewsRepo = new InMemoryReviewsRepository(db);
+  const reviews = new ReviewsService(reviewsRepo, catalog, orders, audit);
+  const marketingRepo = new InMemoryMarketingRepository(db);
+  const marketing = new MarketingService(marketingRepo, audit);
+  const loyaltyRepo = new InMemoryLoyaltyRepository(db);
+  const loyalty = new LoyaltyService(
+    loyaltyRepo,
+    orders,
+    customersRepo,
+    settings,
+    audit,
+  );
+  const reports = new ReportsService(orders, paymentsRepo, cartRecoveryRepo);
+  const website = new WebsiteService(settings, audit);
+  const notificationsRepo = new InMemoryNotificationsRepository(db);
+  const notifications = new NotificationsService(
+    notificationsRepo,
+    orders,
+    inventory,
+    catalog,
+    cartRecoveryRepo,
+  );
+  const staff = new StaffService(adminsRepo, sessionsRepo, audit);
+  const integrations = new IntegrationsService();
+  const legalRepo = new InMemoryLegalRepository(db);
+  const legal = new LegalService(legalRepo, audit);
+  const backupRepo = new InMemoryBackupRepository(db);
+  const backup = new BackupService(
+    backupRepo,
+    catalog,
+    customersRepo,
+    orders,
+    paymentsRepo,
+    leadsRepo,
+    cartRecoveryRepo,
+    shippingRepo,
+    settings,
+    audit,
+  );
+  const automation = new AutomationService(cartRecovery);
 
   return {
     db,
@@ -245,6 +340,28 @@ export function createTestContext(): TestContext {
     shippingRepo,
     shippingRegistry,
     shipping,
+    settingsRepo: settings,
+    returnsRepo,
+    returns,
+    supportRepo,
+    support,
+    reviewsRepo,
+    reviews,
+    marketingRepo,
+    marketing,
+    loyaltyRepo,
+    loyalty,
+    reports,
+    website,
+    notificationsRepo,
+    notifications,
+    staff,
+    integrations,
+    legalRepo,
+    legal,
+    backupRepo,
+    backup,
+    automation,
   };
 }
 

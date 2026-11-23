@@ -146,6 +146,18 @@ export class PrismaAdminsRepository extends AdminsRepository {
     return row ? this.load(row.id, tx) : null;
   }
 
+  async list(tx?: Tx): Promise<StoredAdminUser[]> {
+    const rows = await this.db(tx).adminUser.findMany({
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+    });
+    const admins: StoredAdminUser[] = [];
+    for (const row of rows) {
+      const loaded = await this.load(row.id, tx);
+      if (loaded) admins.push(loaded);
+    }
+    return admins;
+  }
+
   async count(tx?: Tx): Promise<number> {
     return this.db(tx).adminUser.count();
   }

@@ -21,4 +21,11 @@ export abstract class SessionsRepository {
     familyId: string,
     tx?: Tx,
   ): Promise<StoredSession[]>;
+  /** Every session belonging to one principal (Staff Management:
+   * active session counts and forced logout). */
+  abstract listBySubject(
+    subjectType: 'customer' | 'admin',
+    subjectId: string,
+    tx?: Tx,
+  ): Promise<StoredSession[]>;
 }

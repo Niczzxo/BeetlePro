@@ -21,6 +21,19 @@ import { PaymentsModule } from './modules/payments/payments.module';
 import { InventoryModule } from './modules/inventory/inventory.module';
 import { ShippingModule } from './modules/shipping/shipping.module';
 import { WebhooksModule } from './modules/webhooks/webhooks.module';
+import { ReturnsModule } from './modules/returns/returns.module';
+import { SupportModule } from './modules/support/support.module';
+import { ReviewsModule } from './modules/reviews/reviews.module';
+import { MarketingModule } from './modules/marketing/marketing.module';
+import { LoyaltyModule } from './modules/loyalty/loyalty.module';
+import { ReportsModule } from './modules/reports/reports.module';
+import { WebsiteModule } from './modules/website/website.module';
+import { NotificationsModule } from './modules/notifications/notifications.module';
+import { StaffModule } from './modules/staff/staff.module';
+import { IntegrationsModule } from './modules/integrations/integrations.module';
+import { LegalModule } from './modules/legal/legal.module';
+import { BackupModule } from './modules/backup/backup.module';
+import { AutomationModule } from './modules/automation/automation.module';
 
 @Module({
   imports: [
@@ -44,6 +57,19 @@ import { WebhooksModule } from './modules/webhooks/webhooks.module';
     InventoryModule,
     ShippingModule,
     WebhooksModule,
+    ReturnsModule,
+    SupportModule,
+    ReviewsModule,
+    MarketingModule,
+    LoyaltyModule,
+    ReportsModule,
+    WebsiteModule,
+    NotificationsModule,
+    StaffModule,
+    IntegrationsModule,
+    LegalModule,
+    BackupModule,
+    AutomationModule,
   ],
   controllers: [HealthController],
 })

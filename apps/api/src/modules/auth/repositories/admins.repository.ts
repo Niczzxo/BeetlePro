@@ -20,5 +20,7 @@ export abstract class AdminsRepository {
     email: string,
     tx?: Tx,
   ): Promise<StoredAdminUser | null>;
+  /** Every staff account, oldest first (Staff Management). */
+  abstract list(tx?: Tx): Promise<StoredAdminUser[]>;
   abstract count(tx?: Tx): Promise<number>;
 }

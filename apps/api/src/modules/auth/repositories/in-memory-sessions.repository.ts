@@ -36,4 +36,15 @@ export class InMemorySessionsRepository extends SessionsRepository {
       (session) => session.familyId === familyId,
     );
   }
+
+  async listBySubject(
+    subjectType: 'customer' | 'admin',
+    subjectId: string,
+  ): Promise<StoredSession[]> {
+    return [...this.db.sessions.values()].filter(
+      (session) =>
+        session.subjectType === subjectType &&
+        session.subjectId === subjectId,
+    );
+  }
 }

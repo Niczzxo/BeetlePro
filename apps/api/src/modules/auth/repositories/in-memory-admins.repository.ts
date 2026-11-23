@@ -33,6 +33,12 @@ export class InMemoryAdminsRepository extends AdminsRepository {
     );
   }
 
+  async list(): Promise<StoredAdminUser[]> {
+    return [...this.db.adminUsers.values()].sort((a, b) =>
+      a.createdAt.localeCompare(b.createdAt),
+    );
+  }
+
   async count(): Promise<number> {
     return this.db.adminUsers.size;
   }

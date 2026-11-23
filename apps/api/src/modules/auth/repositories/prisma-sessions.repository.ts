@@ -157,4 +157,34 @@ export class PrismaSessionsRepository extends SessionsRepository {
     }
     return stored;
   }
+
+  async listBySubject(
+    subjectType: 'customer' | 'admin',
+    subjectId: string,
+    tx?: Tx,
+  ): Promise<StoredSession[]> {
+    const db = this.db(tx);
+    let userId: string | null = null;
+    if (subjectType === 'admin') {
+      const admin = await db.adminUser.findUnique({
+        where: { id: subjectId },
+      });
+      userId = admin?.userId ?? null;
+    } else {
+      const customer = await db.customer.findUnique({
+        where: { id: subjectId },
+      });
+      userId = customer?.userId ?? null;
+    }
+    if (!userId) return [];
+    const rows = await db.session.findMany({
+      where: { userId },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+    });
+    const stored: StoredSession[] = [];
+    for (const row of rows) {
+      stored.push(await this.toStored(row, tx));
+    }
+    return stored;
+  }
 }
