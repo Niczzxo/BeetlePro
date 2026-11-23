@@ -10,7 +10,13 @@
    the final layout space reserved from the start. The two-stage
    safety net is the legacy's own: at 450ms reveal whatever is
    within two and a half screens, at 900ms reveal the rest, so
-   content is never stranded invisible in a no-scroll render. */
+   content is never stranded invisible in a no-scroll render.
+   The same effect also carries the legacy off-screen animation
+   pause: a second IntersectionObserver parks every section and
+   the hero block with an .anim-off class while it is out of view,
+   and the matching rule in styles/footer.css sets
+   animation-play-state:paused on the looping pendant sway and
+   hotspot pulse inside an .anim-off zone. */
 
 import { useEffect } from 'react';
 
@@ -60,10 +66,36 @@ export default function RevealSystem() {
     observeReveals();
     const t1 = setTimeout(() => revealSweep(false), 450);
     const t2 = setTimeout(() => revealSweep(true), 900);
+
+    /* Off-screen animation pause: the looping CSS animations (the
+       hero pendants' sway and the look hotspots' pulse ring) would
+       otherwise run all day, and on a phone they tax every scroll.
+       One observer parks each section and the hero block with an
+       .anim-off class while it is out of view. The class only sets
+       animation-play-state (see styles/footer.css), so no layout
+       changes. The root margin restarts a section's motion just
+       before it scrolls back in. */
+    let animIO: IntersectionObserver | null = null;
+    if ('IntersectionObserver' in window) {
+      const zones = document.querySelectorAll('section, .hero');
+      if (zones.length) {
+        animIO = new IntersectionObserver(
+          (entries) => {
+            entries.forEach((en) => {
+              en.target.classList.toggle('anim-off', !en.isIntersecting);
+            });
+          },
+          { rootMargin: '120px 0px' },
+        );
+        zones.forEach((el) => animIO!.observe(el));
+      }
+    }
+
     return () => {
       clearTimeout(t1);
       clearTimeout(t2);
       if (revealIO) revealIO.disconnect();
+      if (animIO) animIO.disconnect();
     };
   }, []);
 

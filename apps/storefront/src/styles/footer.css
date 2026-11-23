@@ -163,3 +163,12 @@ footer .fsep{color:rgba(244,242,237,.32)}
    sidebar's .mscrim carries the same pattern in sidebar.css. */
 .scrim{visibility:hidden;transition:opacity .35s,visibility 0s linear .35s}
 .scrim.on{visibility:visible;transition:opacity .35s}
+
+/* Off-screen animation pause, synced from the live site: the
+   RevealSystem observer toggles .anim-off on each section and the
+   hero block while it is out of view. In the live file this rule
+   sits in the main stylesheet; here the base rules sit in the
+   frozen legacy.css, so the pause rule is applied as an override
+   (this file imports after legacy.css). Play-state only, so
+   nothing moves, resizes or reflows. */
+.anim-off .pendant,.anim-off .hot::after{animation-play-state:paused!important}
