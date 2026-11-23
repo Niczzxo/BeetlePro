@@ -2,8 +2,9 @@
 
 /* Site header, ported from the legacy markup with the same DOM
    structure, ids and class names. Behaviour now ported: the
-   burger toggles the mobile nav with the legacy's inline styles,
-   nav taps close the mobile nav again, the topbar gains .scrolled
+   burger opens the mobile sidebar (MenuSidebar, synced from
+   the live site fix: it slides in from the left over its own
+   backdrop, and its nav taps close it again), the topbar gains .scrolled
    after 10px of scroll, the nav highlights the current view the
    way the legacy go() did (the product view marks Shop), the bag
    count is the live bag total, and the search is the legacy
@@ -21,6 +22,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import ThemeToggle from './ThemeToggle';
+import { useMenu } from '../../features/menu/Menu';
 import { useCart } from '../../features/cart/CartProvider';
 import { useWishlist } from '../../features/wishlist/WishlistProvider';
 import { useToast } from '../../features/toast/Toast';
@@ -39,9 +41,9 @@ const NAV_LABELS: Record<(typeof NAV)[number], string> = {
 
 export default function Header() {
   const headerRef = useRef<HTMLElement>(null);
-  const navRef = useRef<HTMLElement>(null);
   const pathname = usePathname();
   const router = useRouter();
+  const { menuOpen, openMenu } = useMenu();
   const { count, openBag } = useCart();
   const { count: wishCount, ids: wishIds } = useWishlist();
   const { toast } = useToast();
@@ -105,32 +107,17 @@ export default function Header() {
     return () => document.removeEventListener('click', onDocClick);
   }, []);
 
-  function toggleMenu() {
-    const n = navRef.current;
-    if (!n) return;
-    if (n.style.display === 'flex') {
-      n.style.display = '';
-    } else {
-      n.style.display = 'flex';
-      n.style.position = 'absolute';
-      n.style.top = '72px';
-      n.style.left = '0';
-      n.style.right = '0';
-      n.style.flexDirection = 'column';
-      n.style.background = 'var(--bg)';
-      n.style.padding = '12px 20px 20px';
-      n.style.borderBottom = '1px solid var(--line)';
-    }
-  }
-
-  function closeMenuOnMobile() {
-    if (window.innerWidth <= 860 && navRef.current) navRef.current.style.display = '';
-  }
-
   return (
     <header id="topbar" ref={headerRef}>
       <div className="wrap hbar">
-        <button className="hbtn burger" id="burger" aria-label="Open menu" onClick={toggleMenu}>
+        <button
+          className="hbtn burger"
+          id="burger"
+          aria-label="Open menu"
+          aria-expanded={menuOpen}
+          aria-controls="sidenav"
+          onClick={openMenu}
+        >
           <svg className="icon" viewBox="0 0 24 24">
             <path d="M4 7h16M4 12h16M4 17h16" />
           </svg>
@@ -139,14 +126,9 @@ export default function Header() {
           <img className="logo-img logo-light" src="/images/logo-light.png" alt="DOSTELO" />
           <img className="logo-img logo-dark" src="/images/logo-dark.png" alt="" aria-hidden="true" />
         </a>
-        <nav className="main" id="mainnav" ref={navRef}>
+        <nav className="main" id="mainnav">
           {NAV.map((key) => (
-            <button
-              key={key}
-              data-nav={key}
-              className={key === activeNav ? 'on' : undefined}
-              onClick={closeMenuOnMobile}
-            >
+            <button key={key} data-nav={key} className={key === activeNav ? 'on' : undefined}>
               {NAV_LABELS[key]}
             </button>
           ))}

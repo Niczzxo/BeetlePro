@@ -1,0 +1,21 @@
+/* Mobile sidebar styles, synced from the live site fix.
+   The preserved legacy stylesheet predates the sidebar, so
+   these rules live here instead of in legacy.css (which stays
+   byte-identical). The values are the live fix's own: the
+   backdrop mirrors the bag drawer's .scrim, the panel mirrors
+   the .drawer slide (same .45s cubic-bezier(.22,.8,.3,1))
+   from the left, and every colour runs through the existing
+   design tokens and CSS variables, so the dark theme matches.
+   Only transform and opacity animate; nothing shifts layout. */
+
+/* ---------- mobile sidebar ---------- */
+.mscrim{position:fixed;inset:0;background:rgba(18,16,13,.5);backdrop-filter:blur(3px);z-index:90;opacity:0;pointer-events:none;transition:opacity .35s}
+.mscrim.on{opacity:1;pointer-events:auto}
+.snav{position:fixed;top:0;left:0;height:100dvh;width:min(320px,86vw);background:var(--surface);color:var(--ink);z-index:96;transform:translateX(-105%);transition:transform .45s cubic-bezier(.22,.8,.3,1);display:flex;flex-direction:column;box-shadow:var(--shadow)}
+.snav.on{transform:none}
+.snav-head{display:flex;justify-content:space-between;align-items:center;padding:20px 22px;border-bottom:1px solid var(--line)}
+.snav-nav{display:flex;flex-direction:column;flex:1;overflow-y:auto;padding:8px 0}
+.snav-link{display:flex;align-items:center;gap:12px;width:100%;text-align:left;padding:15px 22px;font-size:16px;font-weight:500;color:var(--ink);border-bottom:1px solid var(--line);min-height:52px}
+.snav-link:hover{background:var(--chip)}
+.snav-foot{border-top:1px solid var(--line);padding:8px 0}
+.snav-foot .snav-link{border-bottom:0}

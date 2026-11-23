@@ -4,6 +4,8 @@ import './globals.css';
 import Header from '../components/shell/Header';
 import Footer from '../components/shell/Footer';
 import BagDrawer from '../components/shell/BagDrawer';
+import MenuSidebar from '../components/shell/MenuSidebar';
+import MenuProvider from '../features/menu/Menu';
 import CartProvider from '../features/cart/CartProvider';
 import AccountProvider from '../features/account/AccountProvider';
 import CheckoutProvider from '../features/checkout/CheckoutProvider';
@@ -68,12 +70,15 @@ export default function RootLayout({ children }: { children: ReactNode }) {
               <CheckoutProvider>
                 <ModalProvider>
                   <CartProvider>
-                    <NavSystem />
-                    <Header />
-                    {children}
-                    <Footer />
-                    <BagDrawer />
-                    <Tracker />
+                    <MenuProvider>
+                      <NavSystem />
+                      <Header />
+                      {children}
+                      <Footer />
+                      <BagDrawer />
+                      <MenuSidebar />
+                      <Tracker />
+                    </MenuProvider>
                   </CartProvider>
                 </ModalProvider>
               </CheckoutProvider>
