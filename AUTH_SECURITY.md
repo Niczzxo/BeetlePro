@@ -1,0 +1,1 @@
+Security and deployment rules: docs/SECURITY_AND_DEPLOYMENT.md. Admin RBAC is server-enforced. MFA, secure cookies, audit logs, rate limits, CSRF/CORS controls and secret management are required before production.

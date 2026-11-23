@@ -1,0 +1,1 @@
+Canonical architecture: docs/REPOSITORY_STRUCTURE.md. Monorepo contains apps/storefront (Next.js), apps/admin (Next.js), apps/api (NestJS), packages/* (shared TS/CSS), PostgreSQL, Prisma, Redis and BullMQ.

@@ -1,0 +1,1 @@
+Use Vitest for unit/integration tests and Playwright for end-to-end and visual regression. Test storefront routes, theme persistence, animations, cart, wishlist, search, checkout and mobile layouts. Test admin RBAC, audit trails and API permissions. See docs/DESIGN_PRESERVATION_MIGRATION.md.

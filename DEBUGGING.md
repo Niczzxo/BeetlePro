@@ -1,0 +1,1 @@
+Debug each app independently. Run typecheck, lint, unit tests and Playwright. For visual issues compare against original legacy screenshots. Never fix visual mismatch by casually changing shared tokens; verify original CSS first.

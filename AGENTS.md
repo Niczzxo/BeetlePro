@@ -1,0 +1,1 @@
+Read README.md and docs/*.md before changing architecture. Keep public design parity with apps/storefront/public/legacy/index.html. Use TypeScript across apps and shared packages. Never delete legacy assets before visual regression passes. Never expose secrets or bypass server-side RBAC.

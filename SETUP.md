@@ -1,0 +1,1 @@
+Install Node.js LTS and pnpm. Install workspace dependencies from repository root. Configure .env from .env.example. Start PostgreSQL and Redis. Run Prisma migrations and start storefront, admin, API and worker using their workspace scripts. Exact scripts must be added with each app implementation.

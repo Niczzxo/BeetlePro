@@ -1,0 +1,1 @@
+Integrations are server-side: payment gateway, courier, WhatsApp Business Platform, email provider, Redis/BullMQ, monitoring and storage. Keep all secrets in server environment variables. Verify provider webhooks.

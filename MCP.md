@@ -1,0 +1,1 @@
+If MCP tools are added later, expose narrowly scoped authenticated operations. Do not expose raw database access or unrestricted admin actions. Enforce the same RBAC and audit rules as REST endpoints.

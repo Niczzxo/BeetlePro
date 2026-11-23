@@ -1,0 +1,1 @@
+Database domains and rules: docs/BACKEND_AND_DATABASE.md. PostgreSQL + Prisma. All DB access is server-side through API. Money uses integer minor units and currency code; timestamps stored UTC; payment webhooks idempotent.

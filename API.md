@@ -1,0 +1,1 @@
+API specification lives in docs/BACKEND_AND_DATABASE.md. NestJS REST API is hosted at api.dostelo.com. Use /v1 namespaces, DTO validation, OpenAPI generation, auth guards, RBAC, idempotency and webhook verification.

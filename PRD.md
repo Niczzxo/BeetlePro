@@ -1,0 +1,1 @@
+Product requirements are defined across docs/PUBLIC_STOREFRONT.md, docs/ADMIN_PORTAL.md and docs/BACKEND_AND_DATABASE.md. This root file is a navigation summary; expand feature acceptance criteria during implementation.

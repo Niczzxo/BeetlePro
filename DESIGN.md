@@ -1,0 +1,1 @@
+Public design preservation contract: docs/DESIGN_PRESERVATION_MIGRATION.md. Exact existing theme colors, typography, responsive breakpoints, CSS keyframes, animation timing/easing, ink-bleed, fly-to-bag and reveal behavior must remain. Admin shares brand tokens but uses an operations UI layout.
