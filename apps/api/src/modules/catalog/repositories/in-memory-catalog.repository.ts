@@ -28,36 +28,36 @@ export class InMemoryCatalogRepository extends CatalogRepository {
     };
   }
 
-  listProducts(): Product[] {
+  async listProducts(): Promise<Product[]> {
     return [...this.db.products.values()].map((product) =>
       this.withLiveStock(product),
     );
   }
 
-  findByIdOrSlug(key: string): Product | null {
+  async findByIdOrSlug(key: string): Promise<Product | null> {
     const product =
       this.db.products.get(key) ??
       [...this.db.products.values()].find((p) => p.slug === key);
     return product ? this.withLiveStock(product) : null;
   }
 
-  findVariant(
+  async findVariant(
     productId: string,
     variantId: string,
-  ): ProductWithVariant | null {
-    const product = this.findByIdOrSlug(productId);
+  ): Promise<ProductWithVariant | null> {
+    const product = await this.findByIdOrSlug(productId);
     if (!product) return null;
     const variant = product.variants.find((v) => v.id === variantId);
     return variant ? { product, variant } : null;
   }
 
-  listCategories(): Category[] {
+  async listCategories(): Promise<Category[]> {
     return [...this.db.categories.values()].sort(
       (a, b) => a.position - b.position,
     );
   }
 
-  findCategoryBySlugOrName(key: string): Category | null {
+  async findCategoryBySlugOrName(key: string): Promise<Category | null> {
     const slug = slugify(key);
     return (
       [...this.db.categories.values()].find(

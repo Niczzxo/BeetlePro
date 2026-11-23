@@ -17,7 +17,7 @@ async function placeTestOrder(
     phone,
     password: 'buyer-pass-123',
   });
-  const { variant } = findVariant(ctx, 'sneakers-court', 'EU 41', 'White');
+  const { variant } = await findVariant(ctx, 'sneakers-court', 'EU 41', 'White');
   return ctx.checkout.placeOrder({
     customerId: customer.id,
     lines: [
@@ -47,26 +47,26 @@ describe('OrdersService staff reads (Phase 4 chunk 2)', () => {
       'second@example.com',
       '01922222222',
     );
-    ctx.ordersService.transition(second.orderNumber, {
+    await ctx.ordersService.transition(second.orderNumber, {
       status: 'confirmed',
     });
 
-    const all = ctx.ordersService.listAll();
+    const all = await ctx.ordersService.listAll();
     expect(all.map((order) => order.orderNumber)).toEqual([
       second.orderNumber,
       first.orderNumber,
     ]);
     expect(
-      ctx.ordersService
-        .listAll('pending')
-        .map((order) => order.orderNumber),
+      (await ctx.ordersService.listAll('pending')).map(
+        (order) => order.orderNumber,
+      ),
     ).toEqual([first.orderNumber]);
     expect(
-      ctx.ordersService
-        .listAll('confirmed')
-        .map((order) => order.orderNumber),
+      (await ctx.ordersService.listAll('confirmed')).map(
+        (order) => order.orderNumber,
+      ),
     ).toEqual([second.orderNumber]);
-    expect(ctx.ordersService.listAll('delivered')).toEqual([]);
+    expect(await ctx.ordersService.listAll('delivered')).toEqual([]);
   });
 
   it('returns detail with status history and legal next states', async () => {
@@ -77,14 +77,14 @@ describe('OrdersService staff reads (Phase 4 chunk 2)', () => {
       '01933333333',
     );
 
-    const before = ctx.ordersService.getDetail(order.orderNumber);
+    const before = await ctx.ordersService.getDetail(order.orderNumber);
     expect(before.order.orderNumber).toBe(order.orderNumber);
     // Placement records the initial pending event.
     expect(before.events.map((event) => event.status)).toEqual(['pending']);
     expect(before.allowedTransitions).toEqual(['confirmed', 'cancelled']);
 
-    ctx.ordersService.transition(order.orderNumber, { status: 'confirmed' });
-    const after = ctx.ordersService.getDetail(order.orderNumber);
+    await ctx.ordersService.transition(order.orderNumber, { status: 'confirmed' });
+    const after = await ctx.ordersService.getDetail(order.orderNumber);
     expect(after.events.map((event) => event.status)).toEqual([
       'pending',
       'confirmed',

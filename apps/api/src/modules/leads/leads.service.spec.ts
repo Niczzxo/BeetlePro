@@ -42,14 +42,14 @@ async function registerCustomer(ctx: TestContext) {
   });
 }
 
-function browse(ctx: TestContext) {
-  ctx.visitors.ingestEvent({
+async function browse(ctx: TestContext) {
+  await ctx.visitors.ingestEvent({
     visitorId: VISITOR,
     sessionId: SESSION,
     type: 'product-view',
     payload: { productId: 'sneakers-court' },
   });
-  ctx.visitors.ingestEvent({
+  await ctx.visitors.ingestEvent({
     visitorId: VISITOR,
     sessionId: SESSION,
     type: 'add-to-cart',
@@ -57,19 +57,19 @@ function browse(ctx: TestContext) {
   });
 }
 
-describe('lead auto-candidates', () => {
+describe('lead auto-candidates', async () => {
   it('creates a candidate when an identified visitor starts checkout without ordering', async () => {
     const ctx = createTestContext();
     const customer = await registerCustomer(ctx);
-    browse(ctx);
-    ctx.visitors.linkAuthenticated(customer.id, VISITOR);
-    ctx.visitors.ingestEvent({
+    await browse(ctx);
+    await ctx.visitors.linkAuthenticated(customer.id, VISITOR);
+    await ctx.visitors.ingestEvent({
       visitorId: VISITOR,
       sessionId: SESSION,
       type: 'checkout-start',
       payload: { cartValueMinor: 185_000 },
     });
-    const leads = ctx.leads.list({});
+    const leads = await ctx.leads.list({});
     expect(leads).toHaveLength(1);
     expect(leads[0]?.status).toBe('new');
     expect(leads[0]?.source).toBe('buyer-intelligence');
@@ -77,77 +77,77 @@ describe('lead auto-candidates', () => {
     expect(leads[0]?.phone).toBe('01812345678');
     expect(leads[0]?.contactBasis).toBe('account');
     // Evaluation is idempotent: more events do not duplicate it.
-    ctx.visitors.ingestEvent({
+    await ctx.visitors.ingestEvent({
       visitorId: VISITOR,
       sessionId: SESSION,
       type: 'page-view',
     });
-    expect(ctx.leads.list({})).toHaveLength(1);
+    expect(await ctx.leads.list({})).toHaveLength(1);
   });
 
-  it('creates no candidate for an anonymous checkout start', () => {
+  it('creates no candidate for an anonymous checkout start', async () => {
     const ctx = createTestContext();
-    browse(ctx);
-    ctx.visitors.ingestEvent({
+    await browse(ctx);
+    await ctx.visitors.ingestEvent({
       visitorId: VISITOR,
       sessionId: SESSION,
       type: 'checkout-start',
       payload: { cartValueMinor: 185_000 },
     });
-    expect(ctx.leads.list({})).toHaveLength(0);
+    expect(await ctx.leads.list({})).toHaveLength(0);
   });
 
   it('creates a candidate from a hot score with contact details, even without checkout', async () => {
     const ctx = createTestContext();
     const customer = await registerCustomer(ctx);
-    ctx.visitors.linkAuthenticated(customer.id, VISITOR);
+    await ctx.visitors.linkAuthenticated(customer.id, VISITOR);
     for (let index = 0; index < 5; index += 1) {
-      ctx.visitors.ingestEvent({
+      await ctx.visitors.ingestEvent({
         visitorId: VISITOR,
         sessionId: SESSION,
         type: 'product-view',
         payload: { productId: 'sneakers-court' },
       });
     }
-    ctx.visitors.ingestEvent({
+    await ctx.visitors.ingestEvent({
       visitorId: VISITOR,
       sessionId: SESSION,
       type: 'add-to-cart',
       payload: { cartValueMinor: 250_000 },
     });
     // 25 recency + 20 views + 25 cart value = 70, the hot floor.
-    const leads = ctx.leads.list({});
+    const leads = await ctx.leads.list({});
     expect(leads).toHaveLength(1);
     expect(leads[0]?.score).toBe(70);
   });
 
-  it('keeps a candidate raised by an order\u2019s own guest-checkout link open as a follow-up lead', () => {
+  it('keeps a candidate raised by an order\u2019s own guest-checkout link open as a follow-up lead', async () => {
     const ctx = createTestContext();
     // Hot anonymous browsing: 5 views plus a 2500 taka cart and a
     // checkout start score 85, but anonymous means no candidate.
     for (let index = 0; index < 5; index += 1) {
-      ctx.visitors.ingestEvent({
+      await ctx.visitors.ingestEvent({
         visitorId: VISITOR,
         sessionId: SESSION,
         type: 'product-view',
         payload: { productId: 'sneakers-court' },
       });
     }
-    ctx.visitors.ingestEvent({
+    await ctx.visitors.ingestEvent({
       visitorId: VISITOR,
       sessionId: SESSION,
       type: 'add-to-cart',
       payload: { cartValueMinor: 250_000 },
     });
-    ctx.visitors.ingestEvent({
+    await ctx.visitors.ingestEvent({
       visitorId: VISITOR,
       sessionId: SESSION,
       type: 'checkout-start',
       payload: { cartValueMinor: 250_000 },
     });
-    expect(ctx.leads.list({})).toHaveLength(0);
-    const { variant } = findVariant(ctx, 'sneakers-court', 'EU 41', 'White');
-    ctx.checkout.placeOrder({
+    expect(await ctx.leads.list({})).toHaveLength(0);
+    const { variant } = await findVariant(ctx, 'sneakers-court', 'EU 41', 'White');
+    await ctx.checkout.placeOrder({
       customer: {
         fullName: 'Lead Buyer',
         phone: '01712345678',
@@ -160,7 +160,7 @@ describe('lead auto-candidates', () => {
       paymentMethod: 'cod',
       visitorId: VISITOR,
     });
-    const leads = ctx.leads.list({});
+    const leads = await ctx.leads.list({});
     expect(leads).toHaveLength(1);
     expect(leads[0]?.status).toBe('new');
     expect(leads[0]?.source).toBe('guest-checkout');
@@ -170,16 +170,16 @@ describe('lead auto-candidates', () => {
 
   it('converts the open lead when the customer places an order', async () => {    const ctx = createTestContext();
     const customer = await registerCustomer(ctx);
-    browse(ctx);
-    ctx.visitors.linkAuthenticated(customer.id, VISITOR);
-    ctx.visitors.ingestEvent({
+    await browse(ctx);
+    await ctx.visitors.linkAuthenticated(customer.id, VISITOR);
+    await ctx.visitors.ingestEvent({
       visitorId: VISITOR,
       sessionId: SESSION,
       type: 'checkout-start',
     });
-    expect(ctx.leads.list({})).toHaveLength(1);
-    const { variant } = findVariant(ctx, 'sneakers-court', 'EU 41', 'White');
-    ctx.checkout.placeOrder({
+    expect(await ctx.leads.list({})).toHaveLength(1);
+    const { variant } = await findVariant(ctx, 'sneakers-court', 'EU 41', 'White');
+    await ctx.checkout.placeOrder({
       customerId: customer.id,
       lines: [
         { productId: 'sneakers-court', variantId: variant.id, quantity: 1 },
@@ -187,73 +187,73 @@ describe('lead auto-candidates', () => {
       address: DHAKA_ADDRESS,
       paymentMethod: 'cod',
     });
-    const [lead] = ctx.leads.list({});
+    const [lead] = await ctx.leads.list({});
     expect(lead?.status).toBe('converted');
     expect(
-      ctx.audit.list({ action: 'lead.converted' }).length,
+      (await ctx.audit.list({ action: 'lead.converted' })).length,
     ).toBeGreaterThanOrEqual(1);
   });
 });
 
-describe('lead pipeline, assignment and tasks', () => {
-  it('assigns, moves through legal transitions and rejects illegal ones', () => {
+describe('lead pipeline, assignment and tasks', async () => {
+  it('assigns, moves through legal transitions and rejects illegal ones', async () => {
     const ctx = createTestContext();
     const actor = salesActor();
-    const lead = ctx.leads.createManual(
+    const lead = await ctx.leads.createManual(
       { fullName: 'Form Person', phone: '01612345678', source: 'contact-form' },
       actor,
     );
     expect(lead.contactBasis).toBe('contact-form');
 
-    const assigned = ctx.leads.assign(lead.id, 'agent-9', actor);
+    const assigned = await ctx.leads.assign(lead.id, 'agent-9', actor);
     expect(assigned.assigneeId).toBe('agent-9');
-    expect(ctx.audit.list({ action: 'lead.assigned' })).toHaveLength(1);
-    expect(ctx.leads.list({ assigneeId: 'agent-9' })).toHaveLength(1);
-    expect(ctx.leads.list({ assigneeId: 'agent-1' })).toHaveLength(0);
+    expect(await ctx.audit.list({ action: 'lead.assigned' })).toHaveLength(1);
+    expect(await ctx.leads.list({ assigneeId: 'agent-9' })).toHaveLength(1);
+    expect(await ctx.leads.list({ assigneeId: 'agent-1' })).toHaveLength(0);
 
-    ctx.leads.transitionStatus(lead.id, 'qualified', actor);
-    ctx.leads.transitionStatus(lead.id, 'contacted', actor);
-    expect(() =>
+    await ctx.leads.transitionStatus(lead.id, 'qualified', actor);
+    await ctx.leads.transitionStatus(lead.id, 'contacted', actor);
+    await expect(
       ctx.leads.transitionStatus(lead.id, 'new', actor),
-    ).toThrow(BadRequestException);
-    expect(() =>
+    ).rejects.toThrow(BadRequestException);
+    await expect(
       ctx.leads.transitionStatus(lead.id, 'do-not-contact', actor),
-    ).toThrow(BadRequestException);
-    expect(ctx.leads.getLead(lead.id).status).toBe('contacted');
+    ).rejects.toThrow(BadRequestException);
+    expect((await ctx.leads.getLead(lead.id)).status).toBe('contacted');
   });
 
-  it('runs follow-up tasks through create, list and complete', () => {
+  it('runs follow-up tasks through create, list and complete', async () => {
     const ctx = createTestContext();
     const actor = salesActor();
-    const lead = ctx.leads.createManual(
+    const lead = await ctx.leads.createManual(
       { fullName: 'Task Person', phone: '01612345678' },
       actor,
     );
-    const task = ctx.leads.createTask(
+    const task = await ctx.leads.createTask(
       lead.id,
       { title: 'Call about the sneakers' },
       actor,
     );
     expect(task.status).toBe('open');
-    expect(ctx.leads.listTasks(lead.id)).toHaveLength(1);
-    const done = ctx.leads.completeTask(lead.id, task.id, actor);
+    expect(await ctx.leads.listTasks(lead.id)).toHaveLength(1);
+    const done = await ctx.leads.completeTask(lead.id, task.id, actor);
     expect(done.status).toBe('completed');
     expect(done.completedAt).not.toBeNull();
-    expect(() =>
+    await expect(
       ctx.leads.completeTask(lead.id, task.id, actor),
-    ).toThrow(BadRequestException);
+    ).rejects.toThrow(BadRequestException);
   });
 });
 
-describe('contact attempts and opt-out', () => {
-  it('records attempts with staff, channel, purpose and result', () => {
+describe('contact attempts and opt-out', async () => {
+  it('records attempts with staff, channel, purpose and result', async () => {
     const ctx = createTestContext();
     const actor = salesActor('agent-7');
-    const lead = ctx.leads.createManual(
+    const lead = await ctx.leads.createManual(
       { fullName: 'Call Person', phone: '01612345678', source: 'contact-form' },
       actor,
     );
-    const attempt = ctx.leads.recordContactAttempt(
+    const attempt = await ctx.leads.recordContactAttempt(
       lead.id,
       {
         channel: 'phone',
@@ -265,54 +265,54 @@ describe('contact attempts and opt-out', () => {
     expect(attempt.staffId).toBe('agent-7');
     expect(attempt.channel).toBe('phone');
     expect(attempt.optedOut).toBe(false);
-    expect(ctx.leads.listAttempts(lead.id)).toHaveLength(1);
-    expect(ctx.audit.list({ action: 'lead.contact-attempt' })).toHaveLength(1);
+    expect(await ctx.leads.listAttempts(lead.id)).toHaveLength(1);
+    expect(await ctx.audit.list({ action: 'lead.contact-attempt' })).toHaveLength(1);
   });
 
-  it('refuses attempts without details for the channel or without a contact basis', () => {
+  it('refuses attempts without details for the channel or without a contact basis', async () => {
     const ctx = createTestContext();
     const actor = salesActor();
-    const noDetails = ctx.leads.createManual(
+    const noDetails = await ctx.leads.createManual(
       { visitorId: 'visitor-nodetails-1' },
       actor,
     );
     expect(noDetails.contactBasis).toBeNull();
-    expect(() =>
+    await expect(
       ctx.leads.recordContactAttempt(
         noDetails.id,
         { channel: 'phone', purpose: 'Check in', result: 'answered' },
         actor,
       ),
-    ).toThrow(BadRequestException);
-    const emailOnly = ctx.leads.createManual(
+    ).rejects.toThrow(BadRequestException);
+    const emailOnly = await ctx.leads.createManual(
       { fullName: 'Mail Person', email: 'mail@example.com' },
       actor,
     );
-    expect(() =>
+    await expect(
       ctx.leads.recordContactAttempt(
         emailOnly.id,
         { channel: 'whatsapp', purpose: 'Check in', result: 'answered' },
         actor,
       ),
-    ).toThrow(BadRequestException);
+    ).rejects.toThrow(BadRequestException);
     // The matching channel works.
     expect(
-      ctx.leads.recordContactAttempt(
+      (await ctx.leads.recordContactAttempt(
         emailOnly.id,
         { channel: 'email', purpose: 'Check in', result: 'no-answer' },
         actor,
-      ).channel,
+      )).channel,
     ).toBe('email');
   });
 
-  it('an opt-out suppresses the lead and refuses every later attempt', () => {
+  it('an opt-out suppresses the lead and refuses every later attempt', async () => {
     const ctx = createTestContext();
     const actor = salesActor();
-    const lead = ctx.leads.createManual(
+    const lead = await ctx.leads.createManual(
       { fullName: 'Opt Out Person', phone: '01612345678' },
       actor,
     );
-    ctx.leads.recordContactAttempt(
+    await ctx.leads.recordContactAttempt(
       lead.id,
       {
         channel: 'phone',
@@ -321,66 +321,66 @@ describe('contact attempts and opt-out', () => {
       },
       actor,
     );
-    const after = ctx.leads.getLead(lead.id);
+    const after = await ctx.leads.getLead(lead.id);
     expect(after.optedOut).toBe(true);
     expect(after.status).toBe('do-not-contact');
-    expect(ctx.leadsRepo.listSuppressions()).toHaveLength(1);
-    expect(ctx.audit.list({ action: 'lead.opted-out' })).toHaveLength(1);
-    expect(() =>
+    expect(await ctx.leadsRepo.listSuppressions()).toHaveLength(1);
+    expect(await ctx.audit.list({ action: 'lead.opted-out' })).toHaveLength(1);
+    await expect(
       ctx.leads.recordContactAttempt(
         lead.id,
         { channel: 'phone', purpose: 'Second try', result: 'answered' },
         actor,
       ),
-    ).toThrow(ForbiddenException);
+    ).rejects.toThrow(ForbiddenException);
     // The suppression follows the phone number to a new lead too.
-    const twin = ctx.leads.createManual(
+    const twin = await ctx.leads.createManual(
       { fullName: 'Same Number', phone: '01612345678' },
       actor,
     );
-    expect(() =>
+    await expect(
       ctx.leads.recordContactAttempt(
         twin.id,
         { channel: 'sms', purpose: 'New lead attempt', result: 'answered' },
         actor,
       ),
-    ).toThrow(ForbiddenException);
+    ).rejects.toThrow(ForbiddenException);
   });
 
   it('refuses attempts when the visitor denied marketing consent', async () => {
     const ctx = createTestContext();
     const customer = await registerCustomer(ctx);
-    ctx.visitors.recordConsent({
+    await ctx.visitors.recordConsent({
       visitorId: VISITOR,
       scope: 'marketing',
       status: 'denied',
     });
-    ctx.visitors.linkAuthenticated(customer.id, VISITOR);
+    await ctx.visitors.linkAuthenticated(customer.id, VISITOR);
     const actor = salesActor();
-    const lead = ctx.leads.createManual(
+    const lead = await ctx.leads.createManual(
       { visitorId: VISITOR, customerId: customer.id },
       actor,
     );
-    expect(() =>
+    await expect(
       ctx.leads.recordContactAttempt(
         lead.id,
         { channel: 'phone', purpose: 'Follow up', result: 'answered' },
         actor,
       ),
-    ).toThrow(ForbiddenException);
+    ).rejects.toThrow(ForbiddenException);
   });
 });
 
-describe('manual lead identity handling', () => {
-  it('marks a visitor Unverified Contact when staff record a form against it', () => {
+describe('manual lead identity handling', async () => {
+  it('marks a visitor Unverified Contact when staff record a form against it', async () => {
     const ctx = createTestContext();
     const actor = salesActor();
-    ctx.visitors.ingestEvent({
+    await ctx.visitors.ingestEvent({
       visitorId: VISITOR,
       sessionId: SESSION,
       type: 'page-view',
     });
-    ctx.leads.createManual(
+    await ctx.leads.createManual(
       {
         visitorId: VISITOR,
         fullName: 'Form Person',
@@ -389,10 +389,10 @@ describe('manual lead identity handling', () => {
       },
       actor,
     );
-    expect(ctx.visitors.getSession(SESSION)?.identityStatus).toBe(
+    expect((await ctx.visitors.getSession(SESSION))?.identityStatus).toBe(
       'unverified-contact',
     );
     // Still no customer link: the status does not overclaim.
-    expect(ctx.visitors.getSession(SESSION)?.customerId).toBeNull();
+    expect((await ctx.visitors.getSession(SESSION))?.customerId).toBeNull();
   });
 });

@@ -11,19 +11,19 @@ export class InMemorySessionsRepository extends SessionsRepository {
     super();
   }
 
-  create(session: StoredSession): void {
+  async create(session: StoredSession): Promise<void> {
     this.db.sessions.set(session.id, session);
   }
 
-  save(session: StoredSession): void {
+  async save(session: StoredSession): Promise<void> {
     this.db.sessions.set(session.id, session);
   }
 
-  findById(id: string): StoredSession | null {
+  async findById(id: string): Promise<StoredSession | null> {
     return this.db.sessions.get(id) ?? null;
   }
 
-  findByRefreshHash(hash: string): StoredSession | null {
+  async findByRefreshHash(hash: string): Promise<StoredSession | null> {
     return (
       [...this.db.sessions.values()].find(
         (session) => session.refreshTokenHash === hash,
@@ -31,7 +31,7 @@ export class InMemorySessionsRepository extends SessionsRepository {
     );
   }
 
-  listByFamily(familyId: string): StoredSession[] {
+  async listByFamily(familyId: string): Promise<StoredSession[]> {
     return [...this.db.sessions.values()].filter(
       (session) => session.familyId === familyId,
     );

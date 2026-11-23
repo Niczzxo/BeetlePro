@@ -9,20 +9,20 @@ export class InMemoryCartsRepository extends CartsRepository {
     super();
   }
 
-  create(cart: Cart): Cart {
+  async create(cart: Cart): Promise<Cart> {
     this.db.carts.set(cart.id, cart);
     return cart;
   }
 
-  save(cart: Cart): void {
+  async save(cart: Cart): Promise<void> {
     this.db.carts.set(cart.id, cart);
   }
 
-  findById(id: string): Cart | null {
+  async findById(id: string): Promise<Cart | null> {
     return this.db.carts.get(id) ?? null;
   }
 
-  list(): Cart[] {
+  async list(): Promise<Cart[]> {
     return [...this.db.carts.values()];
   }
 }

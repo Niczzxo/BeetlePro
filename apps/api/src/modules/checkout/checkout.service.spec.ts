@@ -23,11 +23,11 @@ const SAVAR_ADDRESS = {
   district: 'Dhaka',
 };
 
-function requestFor(
+async function requestFor(
   ctx: TestContext,
   overrides: Partial<CheckoutRequest> = {},
-): CheckoutRequest {
-  const { variant } = findVariant(ctx, 'sneakers-court', 'EU 41', 'White');
+): Promise<CheckoutRequest> {
+  const { variant } = await findVariant(ctx, 'sneakers-court', 'EU 41', 'White');
   return {
     lines: [
       {
@@ -52,9 +52,9 @@ async function registerCustomer(ctx: TestContext) {
 }
 
 describe('CheckoutService totals', () => {
-  it('waives the zone fee on a first order but still charges the COD fee', () => {
+  it('waives the zone fee on a first order but still charges the COD fee', async () => {
     const ctx = createTestContext();
-    const quote = ctx.checkout.quote(requestFor(ctx));
+    const quote = await ctx.checkout.quote(await requestFor(ctx));
     // Court White Sneakers: 1850 taka = 185000 minor.
     expect(quote.subtotal.amountMinor).toBe(185000);
     expect(quote.zone).toBe('dhaka-city');
@@ -69,14 +69,14 @@ describe('CheckoutService totals', () => {
   it('charges the Dhaka city fee of 70 taka on a second order', async () => {
     const ctx = createTestContext();
     const customer = await registerCustomer(ctx);
-    const first = ctx.checkout.placeOrder(
-      requestFor(ctx, { customerId: customer.id }),
+    const first = await ctx.checkout.placeOrder(
+      await requestFor(ctx, { customerId: customer.id }),
     );
     expect(first.deliveryFee.amountMinor).toBe(0);
     expect(first.firstOrderFreeDelivery).toBe(true);
 
-    const quote = ctx.checkout.quote(
-      requestFor(ctx, { customerId: customer.id }),
+    const quote = await ctx.checkout.quote(
+      await requestFor(ctx, { customerId: customer.id }),
     );
     expect(quote.deliveryFee.amountMinor).toBe(7000);
     expect(quote.firstOrderFreeDelivery).toBe(false);
@@ -87,9 +87,9 @@ describe('CheckoutService totals', () => {
   it('charges the sub city fee of 100 taka for a Savar address', async () => {
     const ctx = createTestContext();
     const customer = await registerCustomer(ctx);
-    ctx.checkout.placeOrder(requestFor(ctx, { customerId: customer.id }));
-    const quote = ctx.checkout.quote(
-      requestFor(ctx, {
+    await ctx.checkout.placeOrder(await requestFor(ctx, { customerId: customer.id }));
+    const quote = await ctx.checkout.quote(
+      await requestFor(ctx, {
         customerId: customer.id,
         address: SAVAR_ADDRESS,
       }),
@@ -103,9 +103,9 @@ describe('CheckoutService totals', () => {
   it('charges 150 taka outside Dhaka and no COD fee for online payment', async () => {
     const ctx = createTestContext();
     const customer = await registerCustomer(ctx);
-    ctx.checkout.placeOrder(requestFor(ctx, { customerId: customer.id }));
-    const quote = ctx.checkout.quote(
-      requestFor(ctx, {
+    await ctx.checkout.placeOrder(await requestFor(ctx, { customerId: customer.id }));
+    const quote = await ctx.checkout.quote(
+      await requestFor(ctx, {
         customerId: customer.id,
         paymentMethod: 'bkash',
         address: {
@@ -125,10 +125,10 @@ describe('CheckoutService totals', () => {
   it('waives the zone fee for everyone while the admin offer switch is on', async () => {
     const ctx = createTestContext();
     const customer = await registerCustomer(ctx);
-    ctx.checkout.placeOrder(requestFor(ctx, { customerId: customer.id }));
+    await ctx.checkout.placeOrder(await requestFor(ctx, { customerId: customer.id }));
     ctx.db.settings.freeDeliveryOffer = true;
-    const quote = ctx.checkout.quote(
-      requestFor(ctx, { customerId: customer.id }),
+    const quote = await ctx.checkout.quote(
+      await requestFor(ctx, { customerId: customer.id }),
     );
     expect(quote.deliveryFee.amountMinor).toBe(0);
     expect(quote.freeDeliveryReason).toBe('admin-offer');
@@ -141,10 +141,10 @@ describe('CheckoutService order placement', () => {
   it('creates a pending order with a legacy BP number and reserves stock', async () => {
     const ctx = createTestContext();
     const customer = await registerCustomer(ctx);
-    const { variant } = findVariant(ctx, 'sneakers-court', 'EU 41', 'White');
-    const before = ctx.inventoryService.availableFor(variant.id);
-    const order = ctx.checkout.placeOrder(
-      requestFor(ctx, {
+    const { variant } = await findVariant(ctx, 'sneakers-court', 'EU 41', 'White');
+    const before = await ctx.inventoryService.availableFor(variant.id);
+    const order = await ctx.checkout.placeOrder(
+      await requestFor(ctx, {
         customerId: customer.id,
         lines: [
           {
@@ -159,22 +159,22 @@ describe('CheckoutService order placement', () => {
     expect(order.status).toBe('pending');
     expect(order.customerId).toBe(customer.id);
     expect(order.total.amountMinor).toBe(2 * 185000 + 1000);
-    expect(ctx.inventoryService.availableFor(variant.id)).toBe(before - 2);
-    const stock = ctx.inventoryService.getStock(variant.id);
+    expect(await ctx.inventoryService.availableFor(variant.id)).toBe(before - 2);
+    const stock = await ctx.inventoryService.getStock(variant.id);
     expect(stock.reserved).toBe(2);
     // The order is recorded against the customer.
-    expect(ctx.orders.countByCustomer(customer.id)).toBe(1);
-    expect(ctx.orders.listStatusEvents(order.id)).toHaveLength(1);
+    expect(await ctx.orders.countByCustomer(customer.id)).toBe(1);
+    expect(await ctx.orders.listStatusEvents(order.id)).toHaveLength(1);
   });
 
   it('rejects an order that exceeds available stock', async () => {
     const ctx = createTestContext();
     const customer = await registerCustomer(ctx);
-    const { variant } = findVariant(ctx, 'canvas-classic', 'EU 41');
+    const { variant } = await findVariant(ctx, 'canvas-classic', 'EU 41');
     // Classic Canvas Shoes stock is 32 per variant.
-    expect(() =>
+    await expect(
       ctx.checkout.placeOrder(
-        requestFor(ctx, {
+        await requestFor(ctx, {
           customerId: customer.id,
           lines: [
             {
@@ -185,13 +185,13 @@ describe('CheckoutService order placement', () => {
           ],
         }),
       ),
-    ).toThrow(BadRequestException);
-    expect(ctx.orders.countByCustomer(customer.id)).toBe(0);
+    ).rejects.toThrow(BadRequestException);
+    expect(await ctx.orders.countByCustomer(customer.id)).toBe(0);
   });
 
-  it('requires a customer to place an order', () => {
+  it('requires a customer to place an order', async () => {
     const ctx = createTestContext();
-    expect(() => ctx.checkout.placeOrder(requestFor(ctx))).toThrow(
+    await expect(ctx.checkout.placeOrder(await requestFor(ctx))).rejects.toThrow(
       BadRequestException,
     );
   });

@@ -27,7 +27,8 @@ lead score, the lead pipeline with assignment, follow-up tasks,
 contact attempts and opt-out suppression, and the CRM customer
 timeline with staff notes and tags. Phase 6 chunk 1 adds
 abandoned cart recovery and the Communication Center: a job
-queue seam (in-process runner standing in for BullMQ), cart
+queue seam (in-process runner by default, BullMQ over Redis
+when REDIS_URL is set), cart
 detection with a stored, staff-editable recovery sequence,
 per-step sends through channel providers that are honest when
 unconfigured, staff call logging, suppression and consent
@@ -209,14 +210,18 @@ seam), policies where a module has flow rules.
   body), rejected outright when no webhook secret is
   configured, and idempotent by (gateway, provider event id):
   a redelivery applies nothing twice.
-- `src/modules/jobs`: the JobQueue seam. The architecture
-  targets Redis plus BullMQ, neither available here, so the
-  bound implementation is an in-process runner driven by
-  timers with BullMQ-like semantics (delayed enqueue,
-  caller-chosen job ids, cancellation, failing processors
-  logged and isolated). Services depend only on the abstract
-  JobQueue; the BullMQ implementation later replaces the
-  provider binding in jobs.module.ts and nothing else.
+- `src/modules/jobs`: the JobQueue seam. Two implementations
+  exist: an in-process runner driven by timers with BullMQ-like
+  semantics (delayed enqueue, caller-chosen job ids,
+  cancellation, failing processors logged and isolated), bound
+  when REDIS_URL is unset, and a BullMQ implementation
+  (bullmq-job-queue.ts, one queue named dostelo-jobs plus one
+  worker dispatching by job name) bound when REDIS_URL is set.
+  Services depend only on the abstract JobQueue; the selection
+  happens in jobs.module.ts and nowhere else. BullMQ rejects
+  ':' in caller-chosen job ids, so the BullMQ class stores ids
+  with ':' replaced by '__' and translates back on cancel; the
+  seam-facing id never changes.
 - `src/modules/communications`: the Communication Center. One
   service sends (or honestly fails to send) every customer
   message and records every staff call in an append-only log.
@@ -251,91 +256,78 @@ seam), policies where a module has flow rules.
 Money is integer minor units (paisa) plus currency BDT everywhere,
 per @dostelo/types. The API namespace is /v1/... per docs/API.md.
 
-## Data layer: in-memory repositories, and how Prisma slots in
+## Data layer: two repository bindings, selected by environment
 
-Prisma engine binaries cannot be downloaded in the current build
-environment (binaries.prisma.sh is unreachable), so `prisma
-generate` and `prisma validate` cannot run here and there is no
-live PostgreSQL. This chunk therefore does not fake a database:
+Every module's persistence goes through a TypeScript repository
+interface in `repositories/*.repository.ts`, written against the
+@dostelo/types domain types, and every interface now has two
+implementations:
 
-- Every module's persistence goes through a TypeScript repository
-  interface in `repositories/*.repository.ts`, written against the
-  @dostelo/types domain types.
-- The provided implementations (`in-memory-*.repository.ts`) read
-  and write an `InMemoryDatabase` (src/store/in-memory.store.ts)
-  seeded at startup with the real catalogue: all 22 products with
-  real prices and stock, generated from
-  apps/storefront/src/data/products.ts by
-  scripts/generate-seed.mjs into src/seed/catalog.seed.ts.
-- State is per-process and resets on restart. That is a stated
-  limitation of this chunk, not a hidden one.
+- The in-memory classes (`in-memory-*.repository.ts`) read and
+  write an `InMemoryDatabase` (src/store/in-memory.store.ts),
+  seeded at startup with the real catalogue. This is the
+  default binding and the one the test suite drives: state is
+  per-process and resets on restart.
+- The Prisma classes (`prisma-*.repository.ts`, beside the
+  in-memory ones in each module) run against PostgreSQL through
+  the schema in packages/database/prisma/schema.prisma (45
+  models). AppModule imports PrismaModule instead of
+  StoreModule when DATABASE_URL is set, each module binds its
+  Prisma repository class under the same condition, and
+  PrismaSeedService seeds the same catalogue (built by the
+  shared builder in src/seed/seed-catalogue.ts) when the
+  Product table is empty. Data then survives restarts.
 
-When Prisma engines are available, the Prisma implementation slots
-in without touching controllers or services:
+Repository methods are async and accept an optional transaction
+client; the four transactional flows (order placement, order
+status transitions, payment verify and refunds, webhook
+application) thread one through, via the TransactionRunner seam
+(PrismaTransactionRunner in the Prisma binding, a no-op in the
+in-memory binding, whose store is single-threaded and already
+atomic). The two former direct InMemoryDatabase readers outside
+repositories, CheckoutService and ManualMobileBankingProvider,
+now read through the SettingsRepository seam over the
+StoreSettings singleton model.
 
-1. Run `pnpm --filter @dostelo/database generate` (and `validate`)
-   to produce the client from packages/database/prisma/
-   schema.prisma.
-2. Add a PrismaModule that provides a PrismaService (a
-   PrismaClient wrapper) and exports it.
-3. For each module, write a `PrismaXRepository` class implementing
-   the same abstract repository (CatalogRepository,
-   CustomersRepository, CartsRepository, OrdersRepository,
-   InventoryRepository, PaymentsRepository, SessionsRepository,
-   AdminsRepository, AuditRepository, VisitorsRepository,
-   LeadsRepository, CrmRepository, CartRecoveryRepository,
-   CommunicationsRepository), mapping domain types to the schema models:
-   Product/ProductVariant/ProductMedia/Category for catalog, User
-   plus Customer for customers, Cart/CartItem for carts,
-   Order/OrderItem/OrderAddress/OrderStatusEvent for
-   orders and checkout, Payment/PaymentEvent/Refund/WebhookEvent
-   for payments and webhooks, ProductVariant.stock plus StockReservation
-   rows for inventory, Session (token hash plus family fields)
-   and User plus AdminUser/Role/Permission for auth, and
-   AuditLog for the audit trail. Phase 5 adds VisitorSession,
-   VisitorEvent, ConsentRecord and IdentityLink for visitors,
-   Lead, LeadScore, LeadAssignment, FollowUpTask and
-   SuppressionRecord for leads, and CustomerNote plus
-   CustomerTag for CRM; the schema carries all of them. Phase 6
-   adds AbandonedCart, RecoveryAttempt, CommunicationLog and
-   RecoverySequenceStep for recovery and communications; the
-   JobQueue seam has no schema (BullMQ keeps its own Redis
-   state when it lands).
-4. Swap the provider binding in each module file from the in-memory
-   class to the Prisma class (one line per module), and replace
-   StoreModule with the PrismaModule in app.module.ts.
-5. Wrap order placement and status transitions in Prisma
-   transactions, as docs/BACKEND_AND_DATABASE.md requires; the
-   in-memory implementations mark the exact mutation points.
-6. Re-run the Vitest suites against the Prisma repositories (the
-   service tests construct the graph manually, so they can bind
-   either implementation) and retire the seed script in favour of
-   a database seed using the same generated catalogue data.
+Selection summary: DATABASE_URL set means Prisma repositories,
+unset means in-memory. REDIS_URL set means the BullMQ job
+queue, unset means the in-process queue. The two choices are
+independent. docs/PRISMA_MIGRATION.md records the swap in full,
+including the schema gaps found and closed while implementing
+it: StockReservation and StoreSettings from the original plan,
+plus three more the domain types already carried (a
+LeadContactAttempt model, a Session.replacedById column and a
+StoreSettings recovery settings column).
+
+Tests: the default Vitest suite stays on the in-memory context
+(202 tests). src/testing/prisma-test-context.ts builds the same
+service graph over the Prisma repositories, and
+src/testing/prisma-integration.spec.ts exercises the core flows
+against a real database, gated behind DOSTELO_TEST_DATABASE_URL
+(a disposable test database; the context truncates all tables
+and reseeds per test). Specs that read the in-memory store
+directly (ctx.db) are in-memory-only by design and are not
+duplicated; the integration suite covers the equivalent flows
+at the service level.
 
 ## Known gaps after this chunk
 
-- Persistence is still in-memory for everything, including the
-  Phase 4 additions: sessions, admin users and audit entries
-  reset on restart, and MFA enrolment does not survive a restart
-  either. The Phase 5 additions (visitor sessions and events,
-  consent records, identity links, leads, contact attempts,
-  follow-up tasks, CRM notes and suppressions) are in-memory
-  too. The Phase 6 additions (abandoned carts, recovery
-  attempts and settings, and the communication log) are
-  in-memory as well. The repository interfaces are the seam; the Prisma
-  schema already carries the Session family fields and the
-  AdminUser MFA fields this chunk uses.
+- Persistence resets on restart only in the default in-memory
+  binding. With DATABASE_URL set, everything persists in
+  PostgreSQL: catalogue, customers, sessions (including MFA
+  state), orders, payments, audit entries, visitor and lead
+  data, recovery records and the communication log. With
+  REDIS_URL set, scheduled recovery steps also survive
+  restarts in Redis; without it, jobs are per-process and a
+  restart loses scheduled steps (detected recoveries are
+  re-schedulable by a scan).
 - The storefront tracker that emits visitor events is Phase 5
   chunk 2: the API endpoints and the typed client methods are
   ready, but no storefront code sends events yet. Cart recovery
   (Phase 6 chunk 1) consumes the same visitor, lead and
-  suppression data; its worker is the in-process JobQueue
-  runner, not BullMQ, because Redis is unavailable in this
-  environment. Jobs are per-process: a restart loses scheduled
-  recovery steps (detected recoveries are re-schedulable by a
-  scan, but the in-memory attempts themselves reset with the
-  store). The storefront page that consumes the recovery link
-  (/recover/<token>) is a later chunk; the API read is ready.
+  suppression data. The storefront page that consumes the
+  recovery link (/recover/<token>) is a later chunk; the API
+  read is ready.
 - No live messaging exists yet: there are no WhatsApp, email or
   SMS credentials for the store, so in any environment without
   them the communication providers honestly record

@@ -19,7 +19,7 @@ export class AuditController {
 
   @Get()
   @RequirePermission('audit.read')
-  list(
+  async list(
     @Query('actorId') actorId?: string,
     @Query('actorType') actorType?: string,
     @Query('action') action?: string,
@@ -29,7 +29,7 @@ export class AuditController {
   ) {
     const parsedLimit = limit ? Number(limit) : undefined;
     return {
-      items: this.audit.list({
+      items: await this.audit.list({
         actorId: actorId || undefined,
         actorType: ACTOR_TYPES.includes(actorType as AuditActorType)
           ? (actorType as AuditActorType)

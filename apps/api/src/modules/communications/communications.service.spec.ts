@@ -62,7 +62,7 @@ describe('CommunicationsService', () => {
     expect(entry.body).toContain('Rahim');
     expect(entry.body).toContain('token123');
     expect(entry.providerMessageId).toBeNull();
-    const log = ctx.communications.listLog({});
+    const log = await ctx.communications.listLog({});
     expect(log).toHaveLength(1);
     expect(log.every((item) => item.status !== 'sent')).toBe(true);
   });
@@ -87,7 +87,7 @@ describe('CommunicationsService', () => {
 
   it('refuses a send to a suppressed phone and records the refusal', async () => {
     const ctx = createTestContext();
-    ctx.leadsRepo.appendSuppression({
+    await ctx.leadsRepo.appendSuppression({
       id: randomUUID(),
       leadId: null,
       customerId: null,
@@ -106,7 +106,7 @@ describe('CommunicationsService', () => {
 
   it('refuses a send when the visitor denied marketing consent', async () => {
     const ctx = createTestContext();
-    ctx.visitors.recordConsent({
+    await ctx.visitors.recordConsent({
       visitorId: 'visitor-denied-1',
       scope: 'marketing',
       status: 'denied',
@@ -151,9 +151,9 @@ describe('CommunicationsService', () => {
     expect(entry.kind).toBe('automated');
   });
 
-  it('logs a manual call as a completed staff action', () => {
+  it('logs a manual call as a completed staff action', async () => {
     const ctx = createTestContext();
-    const entry = ctx.communications.logManualCall(
+    const entry = await ctx.communications.logManualCall(
       {
         phone: '01712345678',
         outcome: 'answered',
@@ -170,7 +170,7 @@ describe('CommunicationsService', () => {
 
   it('an opted-out call outcome suppresses the number for every channel', async () => {
     const ctx = createTestContext();
-    ctx.communications.logManualCall(
+    await ctx.communications.logManualCall(
       { phone: '01712345678', outcome: 'opted-out' },
       actor,
     );
@@ -181,7 +181,7 @@ describe('CommunicationsService', () => {
       purpose: 'cart-recovery',
     });
     expect(send.status).toBe('refused-suppressed');
-    const secondCall = ctx.communications.logManualCall(
+    const secondCall = await ctx.communications.logManualCall(
       { phone: '01712345678', outcome: 'answered' },
       actor,
     );

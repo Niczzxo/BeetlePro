@@ -14,8 +14,8 @@ export class InventoryService {
     @Optional() private readonly audit?: AuditService,
   ) {}
 
-  private toView(variantId: string): StockView {
-    const record = this.inventory.getStock(variantId);
+  private async toView(variantId: string): Promise<StockView> {
+    const record = await this.inventory.getStock(variantId);
     if (!record) {
       throw new NotFoundException(`No stock for variant: ${variantId}`);
     }
@@ -28,34 +28,32 @@ export class InventoryService {
     };
   }
 
-  getStock(variantId: string): StockView {
+  async getStock(variantId: string): Promise<StockView> {
     return this.toView(variantId);
   }
 
-  listStock(productId?: string): StockView[] {
-    return this.inventory
-      .listStock(productId)
-      .map((record) => ({
-        variantId: record.variantId,
-        productId: record.productId,
-        onHand: record.onHand,
-        reserved: record.reserved,
-        available: record.onHand - record.reserved,
-      }));
+  async listStock(productId?: string): Promise<StockView[]> {
+    return (await this.inventory.listStock(productId)).map((record) => ({
+      variantId: record.variantId,
+      productId: record.productId,
+      onHand: record.onHand,
+      reserved: record.reserved,
+      available: record.onHand - record.reserved,
+    }));
   }
 
   /** Staff adjustment, guarded at the route by inventory.adjust.
    * When an actor is supplied (the HTTP path), the adjustment is
    * written to the audit trail. */
-  adjust(
+  async adjust(
     variantId: string,
     dto: InventoryAdjust,
     actor?: AuthPrincipal | null,
-  ): StockView {
-    this.inventory.adjust(variantId, dto.delta);
-    const view = this.toView(variantId);
+  ): Promise<StockView> {
+    await this.inventory.adjust(variantId, dto.delta);
+    const view = await this.toView(variantId);
     if (actor && this.audit) {
-      this.audit.recordForPrincipal(actor, {
+      await this.audit.recordForPrincipal(actor, {
         action: 'inventory.adjusted',
         entityType: 'product-variant',
         entityId: variantId,
@@ -71,8 +69,8 @@ export class InventoryService {
   }
 
   /** Available quantity for cart and checkout validation. */
-  availableFor(variantId: string): number {
-    const record = this.inventory.getStock(variantId);
+  async availableFor(variantId: string): Promise<number> {
+    const record = await this.inventory.getStock(variantId);
     return record ? record.onHand - record.reserved : 0;
   }
 }

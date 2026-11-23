@@ -1,3 +1,4 @@
+import type { Tx } from '../../../prisma/prisma.service';
 import type { StoredSession } from '../../../store/in-memory.store';
 
 /**
@@ -6,9 +7,18 @@ import type { StoredSession } from '../../../store/in-memory.store';
  * hashes are ever stored.
  */
 export abstract class SessionsRepository {
-  abstract create(session: StoredSession): void;
-  abstract save(session: StoredSession): void;
-  abstract findById(id: string): StoredSession | null;
-  abstract findByRefreshHash(hash: string): StoredSession | null;
-  abstract listByFamily(familyId: string): StoredSession[];
+  abstract create(session: StoredSession, tx?: Tx): Promise<void>;
+  abstract save(session: StoredSession, tx?: Tx): Promise<void>;
+  abstract findById(
+    id: string,
+    tx?: Tx,
+  ): Promise<StoredSession | null>;
+  abstract findByRefreshHash(
+    hash: string,
+    tx?: Tx,
+  ): Promise<StoredSession | null>;
+  abstract listByFamily(
+    familyId: string,
+    tx?: Tx,
+  ): Promise<StoredSession[]>;
 }

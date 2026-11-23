@@ -41,7 +41,7 @@ export class ShippingController {
 
   @Post()
   @RequirePermission('shipping.edit')
-  create(
+  async create(
     @Body() body: unknown,
     @CurrentUser() user: AuthPrincipal,
   ) {
@@ -51,13 +51,13 @@ export class ShippingController {
 
   @Get()
   @RequirePermission('shipping.read')
-  list(
+  async list(
     @Query('courier') courier?: string,
     @Query('status') status?: string,
     @Query('orderNumber') orderNumber?: string,
   ) {
     return {
-      items: this.shipping.listShipments({
+      items: await this.shipping.listShipments({
         courier: COURIERS.includes(courier as Courier)
           ? (courier as Courier)
           : undefined,
@@ -71,13 +71,13 @@ export class ShippingController {
 
   @Get(':id')
   @RequirePermission('shipping.read')
-  detail(@Param('id') id: string) {
+  async detail(@Param('id') id: string) {
     return this.shipping.getDetail(id);
   }
 
   @Post(':id/refresh')
   @RequirePermission('shipping.edit')
-  refresh(
+  async refresh(
     @Param('id') id: string,
     @CurrentUser() user: AuthPrincipal,
   ) {

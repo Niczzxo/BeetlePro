@@ -45,22 +45,22 @@ describe('CRM timeline', () => {
     const customer = await registerCustomer(ctx);
     const actor = crmActor();
 
-    ctx.visitors.ingestEvent({
+    await ctx.visitors.ingestEvent({
       visitorId: VISITOR,
       sessionId: SESSION,
       type: 'product-view',
       payload: { productId: 'sneakers-court' },
     });
-    ctx.visitors.ingestEvent({
+    await ctx.visitors.ingestEvent({
       visitorId: VISITOR,
       sessionId: SESSION,
       type: 'add-to-cart',
       payload: { cartValueMinor: 185_000 },
     });
-    ctx.visitors.linkAuthenticated(customer.id, VISITOR);
+    await ctx.visitors.linkAuthenticated(customer.id, VISITOR);
 
-    const { variant } = findVariant(ctx, 'sneakers-court', 'EU 41', 'White');
-    ctx.checkout.placeOrder({
+    const { variant } = await findVariant(ctx, 'sneakers-court', 'EU 41', 'White');
+    await ctx.checkout.placeOrder({
       customerId: customer.id,
       lines: [
         { productId: 'sneakers-court', variantId: variant.id, quantity: 1 },
@@ -69,10 +69,10 @@ describe('CRM timeline', () => {
       paymentMethod: 'cod',
     });
 
-    ctx.crm.addNote(customer.id, 'Prefers evening delivery calls.', actor);
-    ctx.crm.addTag(customer.id, 'repeat-buyer', actor);
+    await ctx.crm.addNote(customer.id, 'Prefers evening delivery calls.', actor);
+    await ctx.crm.addTag(customer.id, 'repeat-buyer', actor);
 
-    const timeline = ctx.crm.getTimeline(customer.id);
+    const timeline = await ctx.crm.getTimeline(customer.id);
     expect(timeline.customer.id).toBe(customer.id);
     expect(timeline.orders).toHaveLength(1);
     expect(timeline.orders[0]?.total.amountMinor).toBe(186_000);
@@ -90,7 +90,7 @@ describe('CRM timeline', () => {
   it('shows no visitor activity for a customer with no linked sessions', async () => {
     const ctx = createTestContext();
     const customer = await registerCustomer(ctx);
-    const timeline = ctx.crm.getTimeline(customer.id);
+    const timeline = await ctx.crm.getTimeline(customer.id);
     expect(timeline.visitor.sessionCount).toBe(0);
     expect(timeline.visitor.eventCount).toBe(0);
     expect(timeline.visitor.bestLeadScore).toBe(0);
@@ -101,14 +101,14 @@ describe('CRM timeline', () => {
     const ctx = createTestContext();
     const customer = await registerCustomer(ctx);
     const actor = crmActor();
-    ctx.crm.addTag(customer.id, 'vip', actor);
-    const tags = ctx.crm.addTag(customer.id, 'vip', actor);
+    await ctx.crm.addTag(customer.id, 'vip', actor);
+    const tags = await ctx.crm.addTag(customer.id, 'vip', actor);
     expect(tags).toEqual(['vip']);
-    expect(ctx.crm.removeTag(customer.id, 'vip', actor)).toEqual([]);
-    expect(() => ctx.crm.removeTag(customer.id, 'vip', actor)).toThrow(
+    expect(await ctx.crm.removeTag(customer.id, 'vip', actor)).toEqual([]);
+    await expect(ctx.crm.removeTag(customer.id, 'vip', actor)).rejects.toThrow(
       NotFoundException,
     );
-    expect(ctx.audit.list({ action: 'customer.tag-added' })).toHaveLength(1);
-    expect(ctx.audit.list({ action: 'customer.note-added' })).toHaveLength(0);
+    expect(await ctx.audit.list({ action: 'customer.tag-added' })).toHaveLength(1);
+    expect(await ctx.audit.list({ action: 'customer.note-added' })).toHaveLength(0);
   });
 });

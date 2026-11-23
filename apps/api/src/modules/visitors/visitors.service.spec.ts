@@ -72,46 +72,46 @@ describe('visitor event validation', () => {
 });
 
 describe('VisitorsService', () => {
-  it('stores events under an anonymous session', () => {
+  it('stores events under an anonymous session', async () => {
     const ctx = createTestContext();
-    ctx.visitors.ingestEvent({
+    await ctx.visitors.ingestEvent({
       visitorId: VISITOR,
       sessionId: SESSION,
       type: 'product-view',
       payload: { productId: 'sneakers-court' },
     });
-    const session = ctx.visitors.getSession(SESSION);
+    const session = await ctx.visitors.getSession(SESSION);
     expect(session?.identityStatus).toBe('anonymous');
     expect(session?.customerId).toBeNull();
-    const events = ctx.visitors.listEventsForSession(SESSION);
+    const events = await ctx.visitors.listEventsForSession(SESSION);
     expect(events).toHaveLength(1);
     expect(events[0]?.customerId).toBeNull();
     expect(events[0]?.marketingUsable).toBe(true);
   });
 
-  it('flags events as not marketing usable after a marketing denial', () => {
+  it('flags events as not marketing usable after a marketing denial', async () => {
     const ctx = createTestContext();
-    ctx.visitors.recordConsent({
+    await ctx.visitors.recordConsent({
       visitorId: VISITOR,
       scope: 'marketing',
       status: 'denied',
     });
-    const event = ctx.visitors.ingestEvent({
+    const event = await ctx.visitors.ingestEvent({
       visitorId: VISITOR,
       sessionId: SESSION,
       type: 'page-view',
     });
     // The event is still stored as an operational record.
-    expect(ctx.visitors.listEventsForSession(SESSION)).toHaveLength(1);
+    expect(await ctx.visitors.listEventsForSession(SESSION)).toHaveLength(1);
     expect(event.marketingUsable).toBe(false);
-    expect(ctx.visitors.marketingUsable(VISITOR)).toBe(false);
+    expect(await ctx.visitors.marketingUsable(VISITOR)).toBe(false);
     // A later grant is the effective decision again.
-    ctx.visitors.recordConsent({
+    await ctx.visitors.recordConsent({
       visitorId: VISITOR,
       scope: 'marketing',
       status: 'granted',
     });
-    expect(ctx.visitors.marketingUsable(VISITOR)).toBe(true);
+    expect(await ctx.visitors.marketingUsable(VISITOR)).toBe(true);
   });
 
   it('links events and sessions to the customer on authenticated link', async () => {
@@ -122,26 +122,26 @@ describe('VisitorsService', () => {
       phone: '01812345678',
       password: PW,
     });
-    ctx.visitors.ingestEvent({
+    await ctx.visitors.ingestEvent({
       visitorId: VISITOR,
       sessionId: SESSION,
       type: 'product-view',
       payload: { productId: 'sneakers-court' },
     });
-    ctx.visitors.linkAuthenticated(customer.id, VISITOR);
-    const session = ctx.visitors.getSession(SESSION);
+    await ctx.visitors.linkAuthenticated(customer.id, VISITOR);
+    const session = await ctx.visitors.getSession(SESSION);
     expect(session?.identityStatus).toBe('known-customer');
     expect(session?.customerId).toBe(customer.id);
     expect(
-      ctx.visitors.listEventsForSession(SESSION)[0]?.customerId,
+      (await ctx.visitors.listEventsForSession(SESSION))[0]?.customerId,
     ).toBe(customer.id);
     // A new session for the same visitor starts out known.
-    ctx.visitors.ingestEvent({
+    await ctx.visitors.ingestEvent({
       visitorId: VISITOR,
       sessionId: 'session-second-1',
       type: 'page-view',
     });
-    expect(ctx.visitors.getSession('session-second-1')?.identityStatus).toBe(
+    expect((await ctx.visitors.getSession('session-second-1'))?.identityStatus).toBe(
       'known-customer',
     );
   });
@@ -149,9 +149,9 @@ describe('VisitorsService', () => {
   it('refuses linking without a customer principal', async () => {
     const ctx = createTestContext();
     const controller = new VisitorsController(ctx.visitors);
-    expect(() =>
+    await expect(
       controller.link({ visitorId: VISITOR }, null),
-    ).toThrow(ForbiddenException);
+    ).rejects.toThrow(ForbiddenException);
     const admin: AuthPrincipal = {
       type: 'admin',
       id: 'admin-1',
@@ -159,9 +159,9 @@ describe('VisitorsService', () => {
       roles: ['super-admin'],
       permissions: [],
     };
-    expect(() =>
+    await expect(
       controller.link({ visitorId: VISITOR }, admin),
-    ).toThrow(ForbiddenException);
+    ).rejects.toThrow(ForbiddenException);
     const customer = await ctx.customers.register({
       fullName: 'Link Owner',
       email: 'owner@example.com',
@@ -175,21 +175,21 @@ describe('VisitorsService', () => {
       roles: [],
       permissions: [],
     };
-    const result = controller.link({ visitorId: VISITOR }, principal);
+    const result = await controller.link({ visitorId: VISITOR }, principal);
     expect(result.customerId).toBe(customer.id);
     expect(result.basis).toBe('authenticated');
   });
 
-  it('links the guest visitor as Guest Checkout when an order is placed with a visitorId', () => {
+  it('links the guest visitor as Guest Checkout when an order is placed with a visitorId', async () => {
     const ctx = createTestContext();
-    ctx.visitors.ingestEvent({
+    await ctx.visitors.ingestEvent({
       visitorId: VISITOR,
       sessionId: SESSION,
       type: 'product-view',
       payload: { productId: 'sneakers-court' },
     });
-    const { variant } = findVariant(ctx, 'sneakers-court', 'EU 41', 'White');
-    const order = ctx.checkout.placeOrder({
+    const { variant } = await findVariant(ctx, 'sneakers-court', 'EU 41', 'White');
+    const order = await ctx.checkout.placeOrder({
       customer: {
         fullName: 'Guest Buyer',
         phone: '01712345678',
@@ -202,37 +202,37 @@ describe('VisitorsService', () => {
       paymentMethod: 'cod',
       visitorId: VISITOR,
     });
-    const session = ctx.visitors.getSession(SESSION);
+    const session = await ctx.visitors.getSession(SESSION);
     expect(session?.identityStatus).toBe('guest-checkout');
     expect(session?.customerId).toBe(order.customerId);
     expect(
-      ctx.visitors.listEventsForSession(SESSION)[0]?.customerId,
+      (await ctx.visitors.listEventsForSession(SESSION))[0]?.customerId,
     ).toBe(order.customerId);
   });
 
-  it('keeps an anonymous session anonymous however strong its activity', () => {
+  it('keeps an anonymous session anonymous however strong its activity', async () => {
     const ctx = createTestContext();
     for (let index = 0; index < 6; index += 1) {
-      ctx.visitors.ingestEvent({
+      await ctx.visitors.ingestEvent({
         visitorId: VISITOR,
         sessionId: SESSION,
         type: 'product-view',
         payload: { productId: 'sneakers-court' },
       });
     }
-    ctx.visitors.ingestEvent({
+    await ctx.visitors.ingestEvent({
       visitorId: VISITOR,
       sessionId: SESSION,
       type: 'checkout-start',
       payload: { cartValueMinor: 250_000 },
     });
-    const summary = ctx.intelligence.summarizeSession(
-      ctx.visitors.getSession(SESSION)!,
+    const summary = await ctx.intelligence.summarizeSession(
+      (await ctx.visitors.getSession(SESSION))!,
     );
     expect(summary.leadScore).toBeGreaterThanOrEqual(70);
     // A hot score is not an identity: status and candidate rules
     // still treat the session as anonymous.
     expect(summary.identityStatus).toBe('anonymous');
-    expect(ctx.leads.list({})).toHaveLength(0);
+    expect(await ctx.leads.list({})).toHaveLength(0);
   });
 });

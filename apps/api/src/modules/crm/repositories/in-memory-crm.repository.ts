@@ -9,12 +9,12 @@ export class InMemoryCrmRepository extends CrmRepository {
     super();
   }
 
-  appendNote(note: CustomerNote): CustomerNote {
+  async appendNote(note: CustomerNote): Promise<CustomerNote> {
     this.db.customerNotes.push(note);
     return note;
   }
 
-  listNotes(customerId: string): CustomerNote[] {
+  async listNotes(customerId: string): Promise<CustomerNote[]> {
     return this.db.customerNotes.filter(
       (note) => note.customerId === customerId,
     );

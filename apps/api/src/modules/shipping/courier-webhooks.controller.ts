@@ -25,7 +25,7 @@ export class CourierWebhooksController {
   constructor(private readonly shipping: ShippingService) {}
 
   @Post(':courier')
-  handle(
+  async handle(
     @Param('courier') courier: string,
     @Body() body: unknown,
     @Headers('x-courier-signature') signature: string | undefined,

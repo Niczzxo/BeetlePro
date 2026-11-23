@@ -10,12 +10,13 @@ export interface CategoryWithCount extends Category {
 export class CatalogService {
   constructor(private readonly catalog: CatalogRepository) {}
 
-  listProducts(categoryKey?: string): { items: Product[]; total: number } {
-    let items = this.catalog
-      .listProducts()
-      .filter((product) => product.status === 'active');
+  async listProducts(categoryKey?: string): Promise<{ items: Product[]; total: number }> {
+    let items = (await this.catalog.listProducts()).filter(
+      (product) => product.status === 'active',
+    );
     if (categoryKey) {
-      const category = this.catalog.findCategoryBySlugOrName(categoryKey);
+      const category =
+        await this.catalog.findCategoryBySlugOrName(categoryKey);
       if (!category) {
         throw new NotFoundException(`Category not found: ${categoryKey}`);
       }
@@ -24,19 +25,19 @@ export class CatalogService {
     return { items, total: items.length };
   }
 
-  getProduct(key: string): Product {
-    const product = this.catalog.findByIdOrSlug(key);
+  async getProduct(key: string): Promise<Product> {
+    const product = await this.catalog.findByIdOrSlug(key);
     if (!product || product.status !== 'active') {
       throw new NotFoundException(`Product not found: ${key}`);
     }
     return product;
   }
 
-  listCategories(): CategoryWithCount[] {
-    const products = this.catalog
-      .listProducts()
-      .filter((product) => product.status === 'active');
-    return this.catalog.listCategories().map((category) => ({
+  async listCategories(): Promise<CategoryWithCount[]> {
+    const products = (await this.catalog.listProducts()).filter(
+      (product) => product.status === 'active',
+    );
+    return (await this.catalog.listCategories()).map((category) => ({
       ...category,
       productCount: products.filter(
         (product) => product.categoryId === category.id,

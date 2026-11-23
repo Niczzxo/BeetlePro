@@ -7,7 +7,9 @@ export interface OrderStatusChangedEvent {
   to: OrderStatus;
 }
 
-type OrderStatusListener = (event: OrderStatusChangedEvent) => void;
+type OrderStatusListener = (
+  event: OrderStatusChangedEvent,
+) => Promise<void> | void;
 
 /**
  * In-process notification that an order changed status.
@@ -15,9 +17,11 @@ type OrderStatusListener = (event: OrderStatusChangedEvent) => void;
  * Orders emit after a transition is saved; the payments module
  * subscribes to keep COD payments in step with delivery,
  * cancellation and returns without a circular module import
- * (orders never imports payments). Listeners must not throw:
- * a failing listener is logged and the order flow continues,
- * because the order transition is already committed.
+ * (orders never imports payments). Listeners may be asynchronous
+ * (the payments listener writes through the repository seam);
+ * emit awaits them in subscription order. Listeners must not
+ * throw: a failing listener is logged and the order flow
+ * continues, because the order transition is already committed.
  */
 @Injectable()
 export class OrderEventBus {
@@ -30,10 +34,10 @@ export class OrderEventBus {
     };
   }
 
-  emit(event: OrderStatusChangedEvent): void {
+  async emit(event: OrderStatusChangedEvent): Promise<void> {
     for (const listener of this.listeners) {
       try {
-        listener(event);
+        await listener(event);
       } catch (error) {
         console.error('Order status listener failed', error);
       }

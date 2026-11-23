@@ -19,6 +19,7 @@ import type {
   LeadCreate,
 } from '@dostelo/validation';
 import type { AuthPrincipal } from '../../common/auth/principal';
+import type { Tx } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { BuyerIntelligenceService } from '../buyer-intelligence/buyer-intelligence.service';
 import { CustomersService } from '../customers/customers.service';
@@ -72,8 +73,8 @@ export class LeadsService implements OnModuleInit {
     private readonly audit: AuditService,
   ) {}
 
-  onModuleInit(): void {
-    this.visitors.setCandidateHook((visitorId) =>
+  async onModuleInit(): Promise<void> {
+    await this.visitors.setCandidateHook((visitorId) =>
       this.evaluateCandidate(visitorId),
     );
   }
@@ -87,20 +88,20 @@ export class LeadsService implements OnModuleInit {
    * Returns the open lead for the visitor when one exists or was
    * created, otherwise null.
    */
-  evaluateCandidate(visitorId: string): Lead | null {
+  async evaluateCandidate(visitorId: string): Promise<Lead | null> {
     try {
-      return this.evaluateCandidateInner(visitorId);
+      return await this.evaluateCandidateInner(visitorId);
     } catch {
       return null;
     }
   }
 
-  private evaluateCandidateInner(visitorId: string): Lead | null {
+  private async evaluateCandidateInner(visitorId: string): Promise<Lead | null> {
     const existing =
-      this.leads.findOpenForVisitor(visitorId)[0] ?? null;
+      (await this.leads.findOpenForVisitor(visitorId))[0] ?? null;
     if (existing) return existing;
 
-    const sessions = this.visitors.listSessionsForVisitor(visitorId);
+    const sessions = await this.visitors.listSessionsForVisitor(visitorId);
     const identified = sessions.find(
       (session) =>
         session.customerId !== null &&
@@ -110,13 +111,15 @@ export class LeadsService implements OnModuleInit {
     if (!identified || !identified.customerId) return null;
     const customerId = identified.customerId;
 
-    const byCustomer = this.leads.findOpenForCustomer(customerId)[0];
+    const byCustomer = (await this.leads.findOpenForCustomer(customerId))[0];
     if (byCustomer) return byCustomer;
 
-    const customer = this.customers.findStored(customerId);
-    const events = this.visitors.listEventsForVisitor(visitorId);
-    const summaries = sessions.map((session) =>
-      this.intelligence.summarizeSession(session),
+    const customer = await this.customers.findStored(customerId);
+    const events = await this.visitors.listEventsForVisitor(visitorId);
+    const summaries = await Promise.all(
+      sessions.map((session) =>
+        this.intelligence.summarizeSession(session),
+      ),
     );
     const best = summaries.reduce((top, summary) =>
       summary.leadScore > top.leadScore ? summary : top,
@@ -131,7 +134,7 @@ export class LeadsService implements OnModuleInit {
       .map((event) => event.occurredAt)
       .sort();
     const firstCheckoutStart = checkoutStarts[0];
-    const orders = this.orders.listByCustomer(customerId);
+    const orders = await this.orders.listByCustomer(customerId);
     const orderedAfterIntent = firstCheckoutStart
       ? orders.some((order) => order.createdAt >= firstCheckoutStart)
       : orders.length > 0;
@@ -172,8 +175,8 @@ export class LeadsService implements OnModuleInit {
       createdAt: now,
       updatedAt: now,
     };
-    this.leads.create(lead);
-    this.audit.record({
+    await this.leads.create(lead);
+    await this.audit.record({
       actorType: 'system',
       actorId: null,
       action: 'lead.created',
@@ -186,27 +189,26 @@ export class LeadsService implements OnModuleInit {
 
   // -- Manual creation -------------------------------------------
 
-  createManual(dto: LeadCreate, actor: AuthPrincipal): Lead {
+  async createManual(dto: LeadCreate, actor: AuthPrincipal): Promise<Lead> {
     let customerId = dto.customerId ?? null;
     if (customerId) {
       // Throws a 404 for an unknown customer id.
-      this.customers.findStored(customerId);
+      await this.customers.findStored(customerId);
     } else if (dto.email) {
       customerId =
-        this.customers.findStoredByEmail(dto.email)?.id ?? null;
+        (await this.customers.findStoredByEmail(dto.email))?.id ?? null;
     } else if (dto.phone) {
       customerId =
-        this.customers.findStoredByPhone(dto.phone)?.id ?? null;
+        (await this.customers.findStoredByPhone(dto.phone))?.id ?? null;
     }
     const customer = customerId
-      ? this.customers.findStored(customerId)
+      ? await this.customers.findStored(customerId)
       : null;
 
     const hasDetails = Boolean(dto.phone || dto.email || customer?.phone || customer?.email);
     let contactBasis: LeadContactBasis | null = null;
     if (customerId && dto.visitorId) {
-      const session = this.visitors
-        .listSessionsForVisitor(dto.visitorId)
+      const session = (await this.visitors.listSessionsForVisitor(dto.visitorId))
         .find((item) => item.customerId === customerId);
       if (session?.identityStatus === 'known-customer') {
         contactBasis = 'account';
@@ -218,7 +220,7 @@ export class LeadsService implements OnModuleInit {
     if (
       !contactBasis &&
       dto.visitorId &&
-      this.visitors.latestConsent(dto.visitorId, 'marketing')?.status ===
+      (await this.visitors.latestConsent(dto.visitorId, 'marketing'))?.status ===
         'granted'
     ) {
       contactBasis = 'marketing-consent';
@@ -244,11 +246,11 @@ export class LeadsService implements OnModuleInit {
       createdAt: now,
       updatedAt: now,
     };
-    this.leads.create(lead);
+    await this.leads.create(lead);
     if (dto.visitorId && hasDetails && !customerId) {
-      this.visitors.markUnverifiedContact(dto.visitorId);
+      await this.visitors.markUnverifiedContact(dto.visitorId);
     }
-    this.audit.recordForPrincipal(actor, {
+    await this.audit.recordForPrincipal(actor, {
       action: 'lead.created',
       entityType: 'lead',
       entityId: lead.id,
@@ -259,9 +261,8 @@ export class LeadsService implements OnModuleInit {
 
   // -- Reads -------------------------------------------------------
 
-  list(filter: { status?: LeadStatus; assigneeId?: string }): Lead[] {
-    return this.leads
-      .list()
+  async list(filter: { status?: LeadStatus; assigneeId?: string }): Promise<Lead[]> {
+    return (await this.leads.list())
       .filter((lead) => {
         if (filter.status && lead.status !== filter.status) return false;
         if (filter.assigneeId && lead.assigneeId !== filter.assigneeId) {
@@ -272,29 +273,29 @@ export class LeadsService implements OnModuleInit {
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   }
 
-  getLead(id: string): Lead {
-    const lead = this.leads.findById(id);
+  async getLead(id: string): Promise<Lead> {
+    const lead = await this.leads.findById(id);
     if (!lead) throw new NotFoundException(`Lead not found: ${id}`);
     return lead;
   }
 
-  getDetail(id: string): LeadDetail {
-    const lead = this.getLead(id);
+  async getDetail(id: string): Promise<LeadDetail> {
+    const lead = await this.getLead(id);
     return {
       lead,
-      attempts: this.leads.listAttempts(id),
-      followUpTasks: this.leads.listTasks(id),
+      attempts: await this.leads.listAttempts(id),
+      followUpTasks: await this.leads.listTasks(id),
     };
   }
 
   // -- Pipeline ----------------------------------------------------
 
-  assign(id: string, assigneeId: string, actor: AuthPrincipal): Lead {
-    const lead = this.getLead(id);
+  async assign(id: string, assigneeId: string, actor: AuthPrincipal): Promise<Lead> {
+    const lead = await this.getLead(id);
     lead.assigneeId = assigneeId;
     lead.updatedAt = new Date().toISOString();
-    this.leads.save(lead);
-    this.audit.recordForPrincipal(actor, {
+    await this.leads.save(lead);
+    await this.audit.recordForPrincipal(actor, {
       action: 'lead.assigned',
       entityType: 'lead',
       entityId: lead.id,
@@ -303,12 +304,12 @@ export class LeadsService implements OnModuleInit {
     return lead;
   }
 
-  transitionStatus(
+  async transitionStatus(
     id: string,
     status: LeadStatus,
     actor: AuthPrincipal,
-  ): Lead {
-    const lead = this.getLead(id);
+  ): Promise<Lead> {
+    const lead = await this.getLead(id);
     if (status === 'do-not-contact') {
       throw new BadRequestException(
         'Do Not Contact is reached only by recording an opt-out',
@@ -322,8 +323,8 @@ export class LeadsService implements OnModuleInit {
     const from = lead.status;
     lead.status = status;
     lead.updatedAt = new Date().toISOString();
-    this.leads.save(lead);
-    this.audit.recordForPrincipal(actor, {
+    await this.leads.save(lead);
+    await this.audit.recordForPrincipal(actor, {
       action:
         status === 'converted' ? 'lead.converted' : 'lead.status-changed',
       entityType: 'lead',
@@ -340,10 +341,10 @@ export class LeadsService implements OnModuleInit {
    * wall-clock timestamps: both sides use millisecond-resolution
    * ISO strings, so a lead created in the same millisecond as
    * the order would tie and be misread as raised by the order. */
-  openLeadIdsForCustomer(customerId: string): string[] {
-    return this.leads
-      .findOpenForCustomer(customerId)
-      .map((lead) => lead.id);
+  async openLeadIdsForCustomer(customerId: string, tx?: Tx): Promise<string[]> {
+    return (await this.leads.findOpenForCustomer(customerId, tx)).map(
+      (lead) => lead.id,
+    );
   }
 
   /** Converts open leads for a customer after an order
@@ -353,17 +354,18 @@ export class LeadsService implements OnModuleInit {
    * snapshotted before linking): a candidate raised by the
    * linking of this very order (a hot guest-checkout session) is
    * a follow-up lead for the next purchase, not a converted one. */
-  markConvertedForCustomer(
+  async markConvertedForCustomer(
     customerId: string,
     orderNumber: string,
     openLeadIdsBeforeOrder: ReadonlySet<string>,
-  ): void {
-    for (const lead of this.leads.findOpenForCustomer(customerId)) {
+    tx?: Tx,
+  ): Promise<void> {
+    for (const lead of await this.leads.findOpenForCustomer(customerId, tx)) {
       if (!openLeadIdsBeforeOrder.has(lead.id)) continue;
       lead.status = 'converted';
       lead.updatedAt = new Date().toISOString();
-      this.leads.save(lead);
-      this.audit.record({
+      await this.leads.save(lead, tx);
+      await this.audit.record({
         actorType: 'system',
         actorId: null,
         action: 'lead.converted',
@@ -376,12 +378,12 @@ export class LeadsService implements OnModuleInit {
 
   // -- Follow-up tasks ----------------------------------------------
 
-  createTask(
+  async createTask(
     leadId: string,
     dto: FollowUpTaskCreate,
     actor: AuthPrincipal,
-  ): FollowUpTask {
-    const lead = this.getLead(leadId);
+  ): Promise<FollowUpTask> {
+    const lead = await this.getLead(leadId);
     const task: FollowUpTask = {
       id: randomUUID(),
       leadId: lead.id,
@@ -392,8 +394,8 @@ export class LeadsService implements OnModuleInit {
       completedAt: null,
       createdAt: new Date().toISOString(),
     };
-    this.leads.createTask(task);
-    this.audit.recordForPrincipal(actor, {
+    await this.leads.createTask(task);
+    await this.audit.recordForPrincipal(actor, {
       action: 'lead.follow-up-created',
       entityType: 'lead',
       entityId: lead.id,
@@ -402,18 +404,18 @@ export class LeadsService implements OnModuleInit {
     return task;
   }
 
-  listTasks(leadId: string): FollowUpTask[] {
-    this.getLead(leadId);
+  async listTasks(leadId: string): Promise<FollowUpTask[]> {
+    await this.getLead(leadId);
     return this.leads.listTasks(leadId);
   }
 
-  completeTask(
+  async completeTask(
     leadId: string,
     taskId: string,
     actor: AuthPrincipal,
-  ): FollowUpTask {
-    this.getLead(leadId);
-    const task = this.leads.findTask(taskId);
+  ): Promise<FollowUpTask> {
+    await this.getLead(leadId);
+    const task = await this.leads.findTask(taskId);
     if (!task || task.leadId !== leadId) {
       throw new NotFoundException(`Follow-up task not found: ${taskId}`);
     }
@@ -422,8 +424,8 @@ export class LeadsService implements OnModuleInit {
     }
     task.status = 'completed';
     task.completedAt = new Date().toISOString();
-    this.leads.saveTask(task);
-    this.audit.recordForPrincipal(actor, {
+    await this.leads.saveTask(task);
+    await this.audit.recordForPrincipal(actor, {
       action: 'lead.follow-up-completed',
       entityType: 'lead',
       entityId: leadId,
@@ -434,29 +436,27 @@ export class LeadsService implements OnModuleInit {
 
   // -- Contact attempts and opt-out ----------------------------------
 
-  listAttempts(leadId: string): LeadContactAttempt[] {
-    this.getLead(leadId);
+  async listAttempts(leadId: string): Promise<LeadContactAttempt[]> {
+    await this.getLead(leadId);
     return this.leads.listAttempts(leadId);
   }
 
-  recordContactAttempt(
+  async recordContactAttempt(
     leadId: string,
     dto: ContactAttemptCreate,
     actor: AuthPrincipal,
-  ): LeadContactAttempt {
-    const lead = this.getLead(leadId);
+  ): Promise<LeadContactAttempt> {
+    const lead = await this.getLead(leadId);
     if (lead.optedOut || lead.status === 'do-not-contact') {
       throw new ForbiddenException(
         'This lead has opted out. Contact attempts are refused.',
       );
     }
-    const suppressed = this.leads
-      .listSuppressions()
-      .some(
-        (record) =>
-          record.leadId === lead.id ||
-          (lead.phone !== null && record.phone === lead.phone),
-      );
+    const suppressed = (await this.leads.listSuppressions()).some(
+      (record) =>
+        record.leadId === lead.id ||
+        (lead.phone !== null && record.phone === lead.phone),
+    );
     if (suppressed) {
       throw new ForbiddenException(
         'This lead is on the suppression list. Contact attempts are refused.',
@@ -481,7 +481,7 @@ export class LeadsService implements OnModuleInit {
     }
     if (
       lead.visitorId &&
-      this.visitors.latestConsent(lead.visitorId, 'marketing')?.status ===
+      (await this.visitors.latestConsent(lead.visitorId, 'marketing'))?.status ===
         'denied'
     ) {
       throw new ForbiddenException(
@@ -501,8 +501,8 @@ export class LeadsService implements OnModuleInit {
       optedOut,
       createdAt: new Date().toISOString(),
     };
-    this.leads.appendAttempt(attempt);
-    this.audit.recordForPrincipal(actor, {
+    await this.leads.appendAttempt(attempt);
+    await this.audit.recordForPrincipal(actor, {
       action: 'lead.contact-attempt',
       entityType: 'lead',
       entityId: lead.id,
@@ -514,32 +514,32 @@ export class LeadsService implements OnModuleInit {
       },
     });
     if (optedOut) {
-      this.applyOptOut(lead, actor, 'Opt-out recorded on a contact attempt');
+      await this.applyOptOut(lead, actor, 'Opt-out recorded on a contact attempt');
     }
     return attempt;
   }
 
   /** Records an opt-out outside a contact attempt (for example a
    * reply to a message). Same suppression effect. */
-  optOut(leadId: string, actor: AuthPrincipal): Lead {
-    const lead = this.getLead(leadId);
+  async optOut(leadId: string, actor: AuthPrincipal): Promise<Lead> {
+    const lead = await this.getLead(leadId);
     if (lead.optedOut) return lead;
-    this.applyOptOut(lead, actor, 'Opt-out recorded by staff');
+    await this.applyOptOut(lead, actor, 'Opt-out recorded by staff');
     return lead;
   }
 
-  private applyOptOut(
+  private async applyOptOut(
     lead: Lead,
     actor: AuthPrincipal | null,
     reason: string,
-  ): void {
+  ): Promise<void> {
     const now = new Date().toISOString();
     lead.optedOut = true;
     lead.optedOutAt = now;
     lead.status = 'do-not-contact';
     lead.updatedAt = now;
-    this.leads.save(lead);
-    this.leads.appendSuppression({
+    await this.leads.save(lead);
+    await this.leads.appendSuppression({
       id: randomUUID(),
       leadId: lead.id,
       customerId: lead.customerId,
@@ -554,9 +554,9 @@ export class LeadsService implements OnModuleInit {
       metadata: { reason },
     };
     if (actor) {
-      this.audit.recordForPrincipal(actor, input);
+      await this.audit.recordForPrincipal(actor, input);
     } else {
-      this.audit.record({ actorType: 'system', actorId: null, ...input });
+      await this.audit.record({ actorType: 'system', actorId: null, ...input });
     }
   }
 }

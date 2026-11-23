@@ -7,6 +7,7 @@ import { ShippingController } from './shipping.controller';
 import { ShippingService } from './shipping.service';
 import { ShippingRepository } from './repositories/shipping.repository';
 import { InMemoryShippingRepository } from './repositories/in-memory-shipping.repository';
+import { PrismaShippingRepository } from './repositories/prisma-shipping.repository';
 import {
   CourierHttpClient,
   FetchCourierHttpClient,
@@ -34,7 +35,7 @@ import { RedxProvider } from './providers/redx.provider';
     SteadfastProvider,
     RedxProvider,
     { provide: CourierHttpClient, useClass: FetchCourierHttpClient },
-    { provide: ShippingRepository, useClass: InMemoryShippingRepository },
+    { provide: ShippingRepository, useClass: process.env.DATABASE_URL ? PrismaShippingRepository : InMemoryShippingRepository },
   ],
   exports: [ShippingService, ShippingRepository],
 })

@@ -28,6 +28,12 @@ enum CartStatus {
   ABANDONED
 }
 
+enum ReservationState {
+  ACTIVE
+  RELEASED
+  FINALIZED
+}
+
 enum OrderStatus {
   PENDING
   CONFIRMED
@@ -130,6 +136,7 @@ model Customer {
   leads              Lead[]
   abandonedCarts     AbandonedCart[]
   communications     CommunicationLog[]
+  visitorSessions    VisitorSession[]
   createdAt          DateTime          @default(now())
   updatedAt          DateTime          @updatedAt
 
@@ -217,6 +224,13 @@ model Session {
   // one login shares a family; reuse of a rotated token revokes
   // the whole family.
   familyId  String?
+  // The session that replaced this one at rotation, when it was
+  // rotated (as opposed to logged out or security-revoked).
+  // AuthService.refresh tells reuse apart from a plain revoked
+  // session by this marker. Added with the Prisma repositories:
+  // StoredSession has carried the field since Phase 4 but the
+  // model had no column for it.
+  replacedById String?
   revokedAt DateTime?
   expiresAt DateTime
   createdAt DateTime  @default(now())
@@ -258,6 +272,7 @@ model Product {
   variants     ProductVariant[]
   media        ProductMedia[]
   orderItems   OrderItem[]
+  cartItems    CartItem[]
   createdAt    DateTime        @default(now())
   updatedAt    DateTime        @updatedAt
 
@@ -280,6 +295,7 @@ model ProductVariant {
   isActive             Boolean    @default(true)
   cartItems            CartItem[]
   orderItems           OrderItem[]
+  stockReservations    StockReservation[]
   createdAt            DateTime   @default(now())
   updatedAt            DateTime   @updatedAt
 
@@ -332,6 +348,44 @@ model CartItem {
   addedAt        DateTime       @default(now())
 
   @@unique([cartId, variantId])
+}
+
+/** One reserved line of an order (inventory, per
+ * docs/PRISMA_MIGRATION.md): quantity of a variant held for an
+ * order from placement until the reservation is released on
+ * cancellation or finalized on delivery. ProductVariant.stock is
+ * the on-hand count; availability is on-hand minus the sum of
+ * ACTIVE reservations, exactly as the in-memory store computes
+ * it. orderId stays a plain reference (no relation) so reserve
+ * and release never depend on relation write ordering. */
+model StockReservation {
+  id        String           @id @default(uuid())
+  orderId   String
+  variantId String
+  variant   ProductVariant   @relation(fields: [variantId], references: [id])
+  quantity  Int
+  state     ReservationState @default(ACTIVE)
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  @@index([orderId])
+  @@index([variantId, state])
+}
+
+/** Singleton store settings row (id is always "store"): the free
+ * delivery offer switch and the manual mobile-banking receiving
+ * instructions that CheckoutService and the manual banking
+ * provider read. Mirrors the in-memory store's settings object. */
+model StoreSettings {
+  id                 String   @id
+  freeDeliveryOffer  Boolean  @default(false)
+  manualInstructions Json
+  /** Cart recovery scalars (abandonedAfterMinutes, tokenTtlDays);
+   * the sequence steps themselves live in RecoverySequenceStep.
+   * Added with the Prisma repositories: the recovery settings had
+   * no schema home for these two values. */
+  recoverySettings   Json?
+  updatedAt          DateTime @updatedAt
 }
 
 // ---------------------------------------------------------------------------
@@ -658,6 +712,7 @@ model Lead {
   note         String?
   scoreRecord  LeadScore?
   assignments  LeadAssignment[]
+  contactAttempts LeadContactAttempt[]
   followUpTasks FollowUpTask[]
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
@@ -684,6 +739,25 @@ model LeadAssignment {
   assigneeId   String
   assignedById String
   createdAt    DateTime @default(now())
+
+  @@index([leadId])
+}
+
+/** One recorded contact attempt against a lead (call, WhatsApp or
+ * email), written by LeadsService.recordContactAttempt. Added
+ * when the Prisma repositories were implemented: the domain type
+ * LeadContactAttempt existed since Phase 5 but had no model. */
+model LeadContactAttempt {
+  id        String   @id @default(uuid())
+  leadId    String
+  lead      Lead     @relation(fields: [leadId], references: [id])
+  channel   String
+  purpose   String
+  result    String
+  note      String?
+  staffId   String
+  optedOut  Boolean  @default(false)
+  createdAt DateTime @default(now())
 
   @@index([leadId])
 }

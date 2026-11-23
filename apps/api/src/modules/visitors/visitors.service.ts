@@ -11,6 +11,7 @@ import type {
   ConsentRecordInput,
   VisitorEventIngest,
 } from '@dostelo/validation';
+import type { Tx } from '../../prisma/prisma.service';
 import type { StoredVisitorEvent } from '../../store/in-memory.store';
 import { VisitorsRepository } from './repositories/visitors.repository';
 
@@ -39,18 +40,21 @@ import { VisitorsRepository } from './repositories/visitors.repository';
  */
 @Injectable()
 export class VisitorsService {
-  private candidateHook: ((visitorId: string) => void) | null = null;
+  private candidateHook: ((visitorId: string) => Promise<unknown> | void) | null =
+    null;
 
   constructor(private readonly visitors: VisitorsRepository) {}
 
   /** Registered by LeadsService on startup. Called after event
    * ingestion and after every identity link. */
-  setCandidateHook(hook: (visitorId: string) => void): void {
+  async setCandidateHook(
+    hook: (visitorId: string) => Promise<unknown> | void,
+  ): Promise<void> {
     this.candidateHook = hook;
   }
 
-  private notifyCandidate(visitorId: string): void {
-    this.candidateHook?.(visitorId);
+  private async notifyCandidate(visitorId: string): Promise<void> {
+    await this.candidateHook?.(visitorId);
   }
 
   /**
@@ -60,12 +64,12 @@ export class VisitorsService {
    * only in effect, because lead contact separately requires a
    * contact basis (see the leads module).
    */
-  marketingUsable(visitorId: string): boolean {
-    const consent = this.visitors.latestConsent(visitorId, 'marketing');
+  async marketingUsable(visitorId: string): Promise<boolean> {
+    const consent = await this.visitors.latestConsent(visitorId, 'marketing');
     return consent?.status !== 'denied';
   }
 
-  latestConsent(visitorId: string, scope: ConsentScope) {
+  async latestConsent(visitorId: string, scope: ConsentScope) {
     return this.visitors.latestConsent(visitorId, scope);
   }
 
@@ -75,10 +79,10 @@ export class VisitorsService {
    * payload, which the schema keeps free of personal data), flags
    * the consent state, and stores the event.
    */
-  ingestEvent(dto: VisitorEventIngest): StoredVisitorEvent {
+  async ingestEvent(dto: VisitorEventIngest): Promise<StoredVisitorEvent> {
     const now = new Date().toISOString();
     const occurredAt = dto.occurredAt ?? now;
-    const session = this.touchSession(dto.sessionId, dto.visitorId, occurredAt);
+    const session = await this.touchSession(dto.sessionId, dto.visitorId, occurredAt);
     const event: StoredVisitorEvent = {
       id: randomUUID(),
       visitorId: dto.visitorId,
@@ -88,17 +92,17 @@ export class VisitorsService {
       path: dto.path ?? null,
       payload: dto.payload ? { ...dto.payload } : null,
       occurredAt,
-      marketingUsable: this.marketingUsable(dto.visitorId),
+      marketingUsable: await this.marketingUsable(dto.visitorId),
     };
-    this.visitors.appendEvent(event);
-    this.notifyCandidate(dto.visitorId);
+    await this.visitors.appendEvent(event);
+    await this.notifyCandidate(dto.visitorId);
     return event;
   }
 
   /** Records a consent decision. The latest record per scope is
    * the effective one, so a later grant re-enables marketing use
    * and a later denial disables it again. */
-  recordConsent(dto: ConsentRecordInput): ConsentRecord {
+  async recordConsent(dto: ConsentRecordInput): Promise<ConsentRecord> {
     const record: ConsentRecord = {
       id: randomUUID(),
       visitorId: dto.visitorId,
@@ -117,12 +121,12 @@ export class VisitorsService {
    * stored events gain the customer id, which is the documented
    * association of eligible events after identification.
    */
-  linkAuthenticated(
+  async linkAuthenticated(
     customerId: string,
     visitorId: string,
-  ): IdentityLink {
-    const link = this.applyLink(customerId, visitorId, 'authenticated');
-    this.notifyCandidate(visitorId);
+  ): Promise<IdentityLink> {
+    const link = await this.applyLink(customerId, visitorId, 'authenticated');
+    await this.notifyCandidate(visitorId);
     return link;
   }
 
@@ -132,11 +136,15 @@ export class VisitorsService {
    * the same customer by an authenticated flow keeps the stronger
    * Known Customer status; a guest link never downgrades it.
    */
-  linkGuestCheckout(customerId: string, visitorId: string): IdentityLink {
-    const existing = this.visitors.findLink(visitorId, customerId);
+  async linkGuestCheckout(
+    customerId: string,
+    visitorId: string,
+    tx?: Tx,
+  ): Promise<IdentityLink> {
+    const existing = await this.visitors.findLink(visitorId, customerId, tx);
     if (existing?.basis === 'authenticated') return existing;
-    const link = this.applyLink(customerId, visitorId, 'guest-checkout');
-    this.notifyCandidate(visitorId);
+    const link = await this.applyLink(customerId, visitorId, 'guest-checkout', tx);
+    await this.notifyCandidate(visitorId);
     return link;
   }
 
@@ -147,58 +155,58 @@ export class VisitorsService {
    * them, so the status says exactly that and no more. No customer
    * link is created by this call.
    */
-  markUnverifiedContact(visitorId: string): void {
-    for (const session of this.visitors.listSessionsForVisitor(visitorId)) {
+  async markUnverifiedContact(visitorId: string): Promise<void> {
+    for (const session of await this.visitors.listSessionsForVisitor(visitorId)) {
       if (session.identityStatus === 'anonymous') {
         session.identityStatus = 'unverified-contact';
-        this.visitors.upsertSession(session);
+        await this.visitors.upsertSession(session);
       }
     }
   }
 
-  private applyLink(
+  private async applyLink(
     customerId: string,
     visitorId: string,
     basis: 'authenticated' | 'guest-checkout',
-  ): IdentityLink {
-    const existing = this.visitors.findLink(visitorId, customerId);
+    tx?: Tx,
+  ): Promise<IdentityLink> {
+    const existing = await this.visitors.findLink(visitorId, customerId, tx);
     const link: IdentityLink =
       existing ??
-      this.visitors.appendLink({
-        id: randomUUID(),
-        visitorId,
-        customerId,
-        basis,
-        createdAt: new Date().toISOString(),
-      });
+      (await this.visitors.appendLink(
+        {
+          id: randomUUID(),
+          visitorId,
+          customerId,
+          basis,
+          createdAt: new Date().toISOString(),
+        },
+        tx,
+      ));
     const status: IdentityStatus =
       basis === 'authenticated' ? 'known-customer' : 'guest-checkout';
-    for (const session of this.visitors.listSessionsForVisitor(visitorId)) {
+    for (const session of await this.visitors.listSessionsForVisitor(visitorId, tx)) {
       const stronger =
         session.identityStatus === 'known-customer' &&
         status === 'guest-checkout';
       if (!stronger) {
         session.identityStatus = status;
         session.customerId = customerId;
-        this.visitors.upsertSession(session);
+        await this.visitors.upsertSession(session, tx);
       }
     }
-    // Associate the visitor's earlier events with the customer.
-    // The in-memory store holds events by reference, so setting
-    // the field here is the write; the Prisma implementation
-    // performs the same association as an UPDATE by visitorId.
-    for (const event of this.visitors.listEventsForVisitor(visitorId)) {
-      if (event.customerId === null) event.customerId = customerId;
-    }
+    // Associate the visitor's earlier events with the customer:
+    // every event that carries no customer yet gains this one.
+    await this.visitors.linkEventsToCustomer(visitorId, customerId, tx);
     return link;
   }
 
-  private touchSession(
+  private async touchSession(
     sessionId: string,
     visitorId: string,
     at: string,
-  ): VisitorSession {
-    const existing = this.visitors.findSession(sessionId);
+  ): Promise<VisitorSession> {
+    const existing = await this.visitors.findSession(sessionId);
     if (existing) {
       existing.lastSeenAt = at;
       return this.visitors.upsertSession(existing);
@@ -207,8 +215,8 @@ export class VisitorsService {
     // identity: a returning known customer is known from the
     // first event of the new session, because the link is keyed
     // by visitorId, not by session.
-    const link = this.visitors.listLinksForVisitor(visitorId)[0] ?? null;
-    const sibling = this.visitors.listSessionsForVisitor(visitorId)[0];
+    const link = (await this.visitors.listLinksForVisitor(visitorId))[0] ?? null;
+    const sibling = (await this.visitors.listSessionsForVisitor(visitorId))[0];
     const session: VisitorSession = {
       id: sessionId,
       visitorId,
@@ -228,33 +236,33 @@ export class VisitorsService {
 
   // Reads used by Buyer Intelligence, Leads and CRM.
 
-  getSession(sessionId: string): VisitorSession | null {
+  async getSession(sessionId: string): Promise<VisitorSession | null> {
     return this.visitors.findSession(sessionId);
   }
 
-  listSessions(): VisitorSession[] {
+  async listSessions(): Promise<VisitorSession[]> {
     return this.visitors.listSessions();
   }
 
-  listSessionsForVisitor(visitorId: string): VisitorSession[] {
+  async listSessionsForVisitor(visitorId: string): Promise<VisitorSession[]> {
     return this.visitors.listSessionsForVisitor(visitorId);
   }
 
-  listSessionsForCustomer(customerId: string): VisitorSession[] {
+  async listSessionsForCustomer(customerId: string): Promise<VisitorSession[]> {
     return this.visitors.listSessionsForCustomer(customerId);
   }
 
-  listEventsForSession(sessionId: string): StoredVisitorEvent[] {
+  async listEventsForSession(sessionId: string): Promise<StoredVisitorEvent[]> {
     return this.visitors.listEventsForSession(sessionId);
   }
 
-  listEventsForVisitor(visitorId: string): StoredVisitorEvent[] {
+  async listEventsForVisitor(visitorId: string): Promise<StoredVisitorEvent[]> {
     return this.visitors.listEventsForVisitor(visitorId);
   }
 
-  listEventsForCustomer(customerId: string): StoredVisitorEvent[] {
-    return this.visitors
-      .listEvents()
-      .filter((event) => event.customerId === customerId);
+  async listEventsForCustomer(customerId: string): Promise<StoredVisitorEvent[]> {
+    return (await this.visitors.listEvents()).filter(
+      (event) => event.customerId === customerId,
+    );
   }
 }

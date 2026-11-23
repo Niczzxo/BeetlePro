@@ -4,6 +4,7 @@ import { VisitorsController } from './visitors.controller';
 import { VisitorsService } from './visitors.service';
 import { VisitorsRepository } from './repositories/visitors.repository';
 import { InMemoryVisitorsRepository } from './repositories/in-memory-visitors.repository';
+import { PrismaVisitorsRepository } from './repositories/prisma-visitors.repository';
 
 /**
  * Visitors module (Phase 5): first-party event ingestion, consent
@@ -16,7 +17,7 @@ import { InMemoryVisitorsRepository } from './repositories/in-memory-visitors.re
     VisitorsService,
     RateLimiter,
     RateLimitGuard,
-    { provide: VisitorsRepository, useClass: InMemoryVisitorsRepository },
+    { provide: VisitorsRepository, useClass: process.env.DATABASE_URL ? PrismaVisitorsRepository : InMemoryVisitorsRepository },
   ],
   exports: [VisitorsService, VisitorsRepository],
 })

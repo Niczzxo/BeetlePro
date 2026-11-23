@@ -40,24 +40,24 @@ export class CartRecoveryController {
 
   @Get()
   @RequirePermission('recovery.read')
-  list(@Query('status') status?: string) {
+  async list(@Query('status') status?: string) {
     const parsed = ABANDONED_CART_STATUSES.includes(
       status as AbandonedCartStatus,
     )
       ? (status as AbandonedCartStatus)
       : undefined;
-    return { items: this.recovery.list({ status: parsed }) };
+    return { items: await this.recovery.list({ status: parsed }) };
   }
 
   @Get('settings')
   @RequirePermission('recovery.read')
-  getSettings() {
+  async getSettings() {
     return this.recovery.getSettings();
   }
 
   @Put('settings')
   @RequirePermission('recovery.edit')
-  updateSettings(
+  async updateSettings(
     @Body() body: unknown,
     @CurrentUser() user: AuthPrincipal,
   ) {
@@ -77,13 +77,13 @@ export class CartRecoveryController {
 
   @Get(':id')
   @RequirePermission('recovery.read')
-  detail(@Param('id') id: string) {
+  async detail(@Param('id') id: string) {
     return this.recovery.getDetail(id);
   }
 
   @Post(':id/cancel')
   @RequirePermission('recovery.edit')
-  cancel(
+  async cancel(
     @Param('id') id: string,
     @CurrentUser() user: AuthPrincipal,
   ) {
@@ -92,7 +92,7 @@ export class CartRecoveryController {
 
   @Post(':id/run-step')
   @RequirePermission('recovery.edit')
-  runStep(
+  async runStep(
     @Param('id') id: string,
     @CurrentUser() user: AuthPrincipal,
   ) {

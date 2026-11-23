@@ -12,11 +12,11 @@ export class InMemoryAuditRepository extends AuditRepository {
     super();
   }
 
-  append(entry: AuditLogEntry): void {
+  async append(entry: AuditLogEntry): Promise<void> {
     this.db.auditLogs.push(entry);
   }
 
-  list(filter: AuditFilter): AuditLogEntry[] {
+  async list(filter: AuditFilter): Promise<AuditLogEntry[]> {
     const matches = this.db.auditLogs.filter((entry) => {
       if (filter.actorId && entry.actorId !== filter.actorId) return false;
       if (filter.actorType && entry.actorType !== filter.actorType) {

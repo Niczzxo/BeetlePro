@@ -20,6 +20,7 @@ import {
 import type { RecoverySettingsUpdate } from '@dostelo/validation';
 import type { AuthPrincipal } from '../../common/auth/principal';
 import { recoveryConfig } from '../../config/recovery.config';
+import type { Tx } from '../../prisma/prisma.service';
 import type { StoredCustomer } from '../../store/in-memory.store';
 import { AuditService } from '../audit/audit.service';
 import { CatalogRepository } from '../catalog/repositories/catalog.repository';
@@ -92,7 +93,11 @@ const OPEN_STATUSES: AbandonedCart['status'][] = [
  * an order. A recovery matches when the order came from the
  * recovery's cart, or when the same customer's order covers every
  * line of the recovery's cart. Matching cancels every pending
- * step, so a customer who buys is never chased.
+ * step, so a customer who buys is never chased. When checkout
+ * passes its transaction, the recovery writes join it; the queue
+ * cancellations are not transactional (a queue is not a
+ * database), which is safe because a step that still fires
+ * against a recovered record is a harmless no-op.
  */
 @Injectable()
 export class CartRecoveryService implements OnModuleInit {
@@ -108,13 +113,13 @@ export class CartRecoveryService implements OnModuleInit {
     private readonly audit: AuditService,
   ) {}
 
-  onModuleInit(): void {
+  async onModuleInit(): Promise<void> {
     this.registerJobs();
     // The recurring detection scan: the handler re-arms itself,
     // so the worker runs for the life of the process. The staff
     // scan endpoint runs the same scan on demand.
     const config = recoveryConfig();
-    this.queue.enqueue(
+    void this.queue.enqueue(
       'cart-recovery.scan',
       {},
       {
@@ -126,13 +131,13 @@ export class CartRecoveryService implements OnModuleInit {
 
   /** Registers the queue processors. Split from onModuleInit so
    * tests can wire the same processors onto a fake-clock queue. */
-  registerJobs(): void {
+  async registerJobs(): Promise<void> {
     this.queue.registerProcessor(
       'cart-recovery.scan',
       async () => {
         await this.scan();
         const config = recoveryConfig();
-        this.queue.enqueue(
+        await this.queue.enqueue(
           'cart-recovery.scan',
           {},
           {
@@ -162,18 +167,18 @@ export class CartRecoveryService implements OnModuleInit {
    * converted through a path that did not notify recovery.
    */
   async scan(nowMs: number = Date.now()): Promise<ScanResult> {
-    const settings = this.recovery.getSettings();
+    const settings = await this.recovery.getSettings();
     const thresholdMs = settings.abandonedAfterMinutes * 60_000;
     let detected = 0;
     let closed = 0;
 
-    for (const cart of this.carts.list()) {
-      const existing = this.recovery.findByCartId(cart.id);
+    for (const cart of await this.carts.list()) {
+      const existing = await this.recovery.findByCartId(cart.id);
       if (existing && OPEN_STATUSES.includes(existing.status)) {
         if (cart.status === 'converted') {
-          this.applyRecovered(existing, null);
+          await this.applyRecovered(existing, null);
         } else if (cart.items.length === 0) {
-          this.applyClosed(existing, 'cart-emptied');
+          await this.applyClosed(existing, 'cart-emptied');
           closed += 1;
         }
         continue;
@@ -183,11 +188,11 @@ export class CartRecoveryService implements OnModuleInit {
       if (cart.items.length === 0) continue;
       const inactiveMs = nowMs - Date.parse(cart.updatedAt);
       if (inactiveMs < thresholdMs) continue;
-      const contact = this.resolveContact(cart);
+      const contact = await this.resolveContact(cart);
       if (!contact) continue;
 
       const now = new Date(nowMs).toISOString();
-      const view = this.cartsService.toView(cart);
+      const view = await this.cartsService.toView(cart);
       const recovery: AbandonedCart = {
         id: randomUUID(),
         cartId: cart.id,
@@ -214,9 +219,9 @@ export class CartRecoveryService implements OnModuleInit {
         createdAt: now,
         updatedAt: now,
       };
-      this.recovery.create(recovery);
+      await this.recovery.create(recovery);
       detected += 1;
-      this.audit.record({
+      await this.audit.record({
         actorType: 'system',
         actorId: null,
         action: 'cart-recovery.detected',
@@ -233,9 +238,9 @@ export class CartRecoveryService implements OnModuleInit {
         .slice()
         .sort((a, b) => a.stepNumber - b.stepNumber)[0];
       if (firstStep) {
-        this.scheduleStep(recovery, firstStep, nowMs);
+        await this.scheduleStep(recovery, firstStep, nowMs);
       } else {
-        this.applyClosed(recovery, 'sequence-exhausted');
+        await this.applyClosed(recovery, 'sequence-exhausted');
       }
     }
     return { detected, closed };
@@ -252,34 +257,32 @@ export class CartRecoveryService implements OnModuleInit {
     abandonedCartId: string,
     stepNumber: number,
   ): Promise<void> {
-    const recovery = this.recovery.findById(abandonedCartId);
+    const recovery = await this.recovery.findById(abandonedCartId);
     if (!recovery || !OPEN_STATUSES.includes(recovery.status)) {
       return;
     }
-    const attempt = this.recovery
-      .listAttempts(abandonedCartId)
-      .find(
-        (item) =>
-          item.stepNumber === stepNumber && item.status === 'scheduled',
-      );
+    const attempt = (await this.recovery.listAttempts(abandonedCartId)).find(
+      (item) =>
+        item.stepNumber === stepNumber && item.status === 'scheduled',
+    );
     if (!attempt) return;
     attempt.queueJobId = null;
 
-    const cart = this.carts.findById(recovery.cartId);
+    const cart = await this.carts.findById(recovery.cartId);
     if (!cart || cart.status === 'converted') {
       attempt.status = 'skipped';
-      this.recovery.saveAttempt(attempt);
-      this.applyRecovered(recovery, null);
+      await this.recovery.saveAttempt(attempt);
+      await this.applyRecovered(recovery, null);
       return;
     }
     if (cart.items.length === 0) {
       attempt.status = 'skipped';
-      this.recovery.saveAttempt(attempt);
-      this.applyClosed(recovery, 'cart-emptied');
+      await this.recovery.saveAttempt(attempt);
+      await this.applyClosed(recovery, 'cart-emptied');
       return;
     }
 
-    const settings = this.recovery.getSettings();
+    const settings = await this.recovery.getSettings();
     const step = settings.steps.find(
       (item) => item.stepNumber === stepNumber,
     );
@@ -294,9 +297,9 @@ export class CartRecoveryService implements OnModuleInit {
       attempt.status = 'executed';
       attempt.executedAt = new Date().toISOString();
       attempt.outcome = outcome;
-      this.recovery.saveAttempt(attempt);
+      await this.recovery.saveAttempt(attempt);
     } else {
-      const view = this.cartsService.toView(cart);
+      const view = await this.cartsService.toView(cart);
       const entry = await this.communications.send({
         channel,
         to,
@@ -321,10 +324,10 @@ export class CartRecoveryService implements OnModuleInit {
       attempt.executedAt = new Date().toISOString();
       attempt.outcome = outcome;
       attempt.communicationLogId = communicationLogId;
-      this.recovery.saveAttempt(attempt);
+      await this.recovery.saveAttempt(attempt);
     }
 
-    this.audit.record({
+    await this.audit.record({
       actorType: 'system',
       actorId: null,
       action: 'cart-recovery.step-executed',
@@ -339,7 +342,7 @@ export class CartRecoveryService implements OnModuleInit {
     if (outcome === 'refused-suppressed' || outcome === 'refused-consent') {
       // The person said no. Later steps would only be refused
       // again, so the sequence stops here.
-      this.applyClosed(recovery, 'contact-refused');
+      await this.applyClosed(recovery, 'contact-refused');
       return;
     }
     const nextStep = settings.steps
@@ -347,11 +350,11 @@ export class CartRecoveryService implements OnModuleInit {
       .sort((a, b) => a.stepNumber - b.stepNumber)[0];
     recovery.status = 'in-recovery';
     recovery.updatedAt = new Date().toISOString();
-    this.recovery.save(recovery);
+    await this.recovery.save(recovery);
     if (nextStep) {
-      this.scheduleStep(recovery, nextStep, Date.now());
+      await this.scheduleStep(recovery, nextStep, Date.now());
     } else {
-      this.applyClosed(recovery, 'sequence-exhausted');
+      await this.applyClosed(recovery, 'sequence-exhausted');
     }
   }
 
@@ -362,23 +365,23 @@ export class CartRecoveryService implements OnModuleInit {
     id: string,
     actor: AuthPrincipal,
   ): Promise<AbandonedCartDetail> {
-    const recovery = this.getRecovery(id);
+    const recovery = await this.getRecovery(id);
     if (!OPEN_STATUSES.includes(recovery.status)) {
       throw new BadRequestException(
         `Recovery ${id} is ${recovery.status}; no step can run`,
       );
     }
-    const next = this.recovery
-      .listAttempts(id)
-      .find((attempt) => attempt.status === 'scheduled');
+    const next = (await this.recovery.listAttempts(id)).find(
+      (attempt) => attempt.status === 'scheduled',
+    );
     if (!next) {
       throw new BadRequestException(
         `Recovery ${id} has no scheduled step to run`,
       );
     }
-    if (next.queueJobId) this.queue.cancel(next.queueJobId);
+    if (next.queueJobId) await this.queue.cancel(next.queueJobId);
     await this.executeStep(id, next.stepNumber);
-    this.audit.recordForPrincipal(actor, {
+    await this.audit.recordForPrincipal(actor, {
       action: 'cart-recovery.step-run',
       entityType: 'abandoned-cart',
       entityId: id,
@@ -394,18 +397,22 @@ export class CartRecoveryService implements OnModuleInit {
    * by checkout; never throws into the order flow. Returns how
    * many recoveries matched.
    */
-  markRecoveredForOrder(input: RecoveredOrderInput): number {
+  async markRecoveredForOrder(
+    input: RecoveredOrderInput,
+    tx?: Tx,
+  ): Promise<number> {
     try {
       let matched = 0;
-      for (const recovery of this.recovery.findOpenForCustomer(
+      for (const recovery of await this.recovery.findOpenForCustomer(
         input.customerId,
+        tx,
       )) {
         const byCart =
           input.cartId !== null && recovery.cartId === input.cartId;
-        if (!byCart && !this.orderCoversCart(input, recovery)) {
+        if (!byCart && !(await this.orderCoversCart(input, recovery, tx))) {
           continue;
         }
-        this.applyRecovered(recovery, input.orderNumber);
+        await this.applyRecovered(recovery, input.orderNumber, tx);
         matched += 1;
       }
       return matched;
@@ -414,11 +421,12 @@ export class CartRecoveryService implements OnModuleInit {
     }
   }
 
-  private orderCoversCart(
+  private async orderCoversCart(
     input: RecoveredOrderInput,
     recovery: AbandonedCart,
-  ): boolean {
-    const cart = this.carts.findById(recovery.cartId);
+    tx?: Tx,
+  ): Promise<boolean> {
+    const cart = await this.carts.findById(recovery.cartId, tx);
     if (!cart || cart.items.length === 0) return false;
     const ordered = new Map<string, number>();
     for (const line of input.lines) {
@@ -432,11 +440,11 @@ export class CartRecoveryService implements OnModuleInit {
     );
   }
 
-  cancelRecovery(
+  async cancelRecovery(
     id: string,
     actor: AuthPrincipal,
-  ): AbandonedCart {
-    const recovery = this.getRecovery(id);
+  ): Promise<AbandonedCart> {
+    const recovery = await this.getRecovery(id);
     if (!OPEN_STATUSES.includes(recovery.status)) {
       throw new BadRequestException(
         `Recovery ${id} is already ${recovery.status}`,
@@ -444,9 +452,9 @@ export class CartRecoveryService implements OnModuleInit {
     }
     recovery.status = 'cancelled';
     recovery.updatedAt = new Date().toISOString();
-    this.recovery.save(recovery);
-    this.cancelPendingAttempts(recovery.id);
-    this.audit.recordForPrincipal(actor, {
+    await this.recovery.save(recovery);
+    await this.cancelPendingAttempts(recovery.id);
+    await this.audit.recordForPrincipal(actor, {
       action: 'cart-recovery.cancelled',
       entityType: 'abandoned-cart',
       entityId: recovery.id,
@@ -455,17 +463,18 @@ export class CartRecoveryService implements OnModuleInit {
     return recovery;
   }
 
-  private applyRecovered(
+  private async applyRecovered(
     recovery: AbandonedCart,
     orderNumber: string | null,
-  ): void {
+    tx?: Tx,
+  ): Promise<void> {
     if (!OPEN_STATUSES.includes(recovery.status)) return;
     recovery.status = 'recovered';
     recovery.recoveredOrderNumber = orderNumber;
     recovery.updatedAt = new Date().toISOString();
-    this.recovery.save(recovery);
-    this.cancelPendingAttempts(recovery.id);
-    this.audit.record({
+    await this.recovery.save(recovery, tx);
+    await this.cancelPendingAttempts(recovery.id, tx);
+    await this.audit.record({
       actorType: 'system',
       actorId: null,
       action: 'cart-recovery.recovered',
@@ -475,36 +484,40 @@ export class CartRecoveryService implements OnModuleInit {
     });
   }
 
-  private applyClosed(
+  private async applyClosed(
     recovery: AbandonedCart,
     reason: string,
-  ): void {
+    tx?: Tx,
+  ): Promise<void> {
     if (!OPEN_STATUSES.includes(recovery.status)) return;
     recovery.status = 'closed';
     recovery.closeReason = reason;
     recovery.updatedAt = new Date().toISOString();
-    this.recovery.save(recovery);
-    this.cancelPendingAttempts(recovery.id);
+    await this.recovery.save(recovery, tx);
+    await this.cancelPendingAttempts(recovery.id, tx);
   }
 
-  private cancelPendingAttempts(abandonedCartId: string): void {
-    for (const attempt of this.recovery.listAttempts(abandonedCartId)) {
+  private async cancelPendingAttempts(
+    abandonedCartId: string,
+    tx?: Tx,
+  ): Promise<void> {
+    for (const attempt of await this.recovery.listAttempts(abandonedCartId, tx)) {
       if (attempt.status !== 'scheduled') continue;
       if (attempt.queueJobId) {
-        this.queue.cancel(attempt.queueJobId);
+        await this.queue.cancel(attempt.queueJobId);
         attempt.queueJobId = null;
       }
       attempt.status = 'cancelled';
       attempt.updatedAt = new Date().toISOString();
-      this.recovery.saveAttempt(attempt);
+      await this.recovery.saveAttempt(attempt, tx);
     }
   }
 
-  private scheduleStep(
+  private async scheduleStep(
     recovery: AbandonedCart,
     step: RecoveryStep,
     fromMs: number,
-  ): RecoveryAttempt {
+  ): Promise<RecoveryAttempt> {
     const now = new Date().toISOString();
     const attempt: RecoveryAttempt = {
       id: randomUUID(),
@@ -523,7 +536,7 @@ export class CartRecoveryService implements OnModuleInit {
       createdAt: now,
       updatedAt: now,
     };
-    attempt.queueJobId = this.queue.enqueue(
+    attempt.queueJobId = await this.queue.enqueue(
       'cart-recovery.execute-step',
       { abandonedCartId: recovery.id, stepNumber: step.stepNumber },
       {
@@ -531,7 +544,7 @@ export class CartRecoveryService implements OnModuleInit {
         jobId: `recovery-step:${attempt.id}`,
       },
     );
-    this.recovery.createAttempt(attempt);
+    await this.recovery.createAttempt(attempt);
     return attempt;
   }
 
@@ -547,11 +560,11 @@ export class CartRecoveryService implements OnModuleInit {
    * a passwordless record was created by submitting details at
    * checkout.
    */
-  private resolveContact(cart: Cart): ResolvedContact | null {
+  private async resolveContact(cart: Cart): Promise<ResolvedContact | null> {
     let customerId = cart.customerId;
     let visitorId: string | null = null;
     if (cart.sessionToken) {
-      const session = this.visitors.getSession(cart.sessionToken);
+      const session = await this.visitors.getSession(cart.sessionToken);
       if (session) {
         visitorId = session.visitorId;
         customerId = customerId ?? session.customerId;
@@ -560,7 +573,7 @@ export class CartRecoveryService implements OnModuleInit {
     if (!customerId) return null;
     let customer: StoredCustomer;
     try {
-      customer = this.customers.findStored(customerId);
+      customer = await this.customers.findStored(customerId);
     } catch {
       return null;
     }
@@ -579,28 +592,26 @@ export class CartRecoveryService implements OnModuleInit {
 
   // -- Reads -------------------------------------------------------------
 
-  list(filter: { status?: AbandonedCart['status'] }): AbandonedCart[] {
-    return this.recovery
-      .list()
-      .filter(
-        (recovery) => !filter.status || recovery.status === filter.status,
-      );
+  async list(filter: { status?: AbandonedCart['status'] }): Promise<AbandonedCart[]> {
+    return (await this.recovery.list()).filter(
+      (recovery) => !filter.status || recovery.status === filter.status,
+    );
   }
 
-  getRecovery(id: string): AbandonedCart {
-    const recovery = this.recovery.findById(id);
+  async getRecovery(id: string): Promise<AbandonedCart> {
+    const recovery = await this.recovery.findById(id);
     if (!recovery) {
       throw new NotFoundException(`Abandoned cart not found: ${id}`);
     }
     return recovery;
   }
 
-  getDetail(id: string): AbandonedCartDetail {
-    const recovery = this.getRecovery(id);
+  async getDetail(id: string): Promise<AbandonedCartDetail> {
+    const recovery = await this.getRecovery(id);
     return {
       recovery,
-      attempts: this.recovery.listAttempts(id),
-      communications: this.communications.listLog({
+      attempts: await this.recovery.listAttempts(id),
+      communications: await this.communications.listLog({
         abandonedCartId: id,
       }),
     };
@@ -608,15 +619,15 @@ export class CartRecoveryService implements OnModuleInit {
 
   // -- Settings -----------------------------------------------------------
 
-  getSettings(): RecoverySettings {
+  async getSettings(): Promise<RecoverySettings> {
     return this.recovery.getSettings();
   }
 
-  updateSettings(
+  async updateSettings(
     dto: RecoverySettingsUpdate,
     actor: AuthPrincipal,
-  ): RecoverySettings {
-    const current = this.recovery.getSettings();
+  ): Promise<RecoverySettings> {
+    const current = await this.recovery.getSettings();
     const next: RecoverySettings = {
       abandonedAfterMinutes:
         dto.abandonedAfterMinutes ?? current.abandonedAfterMinutes,
@@ -652,8 +663,8 @@ export class CartRecoveryService implements OnModuleInit {
         .slice()
         .sort((a, b) => a.stepNumber - b.stepNumber);
     }
-    this.recovery.saveSettings(next);
-    this.audit.recordForPrincipal(actor, {
+    await this.recovery.saveSettings(next);
+    await this.audit.recordForPrincipal(actor, {
       action: 'cart-recovery.settings-updated',
       entityType: 'settings',
       entityId: 'cart-recovery',
@@ -675,8 +686,8 @@ export class CartRecoveryService implements OnModuleInit {
    * Recovered, closed, cancelled and expired tokens answer with
    * their honest status and no items.
    */
-  getByToken(token: string): RecoveryCartView {
-    const recovery = this.recovery.findByToken(token);
+  async getByToken(token: string): Promise<RecoveryCartView> {
+    const recovery = await this.recovery.findByToken(token);
     if (!recovery) {
       throw new NotFoundException('Recovery link not found');
     }
@@ -707,7 +718,7 @@ export class CartRecoveryService implements OnModuleInit {
         ...empty,
       };
     }
-    const cart = this.carts.findById(recovery.cartId);
+    const cart = await this.carts.findById(recovery.cartId);
     if (!cart || cart.items.length === 0) {
       return {
         status: 'closed',
@@ -716,8 +727,9 @@ export class CartRecoveryService implements OnModuleInit {
       };
     }
     let subtotalMinor = 0;
-    const items = cart.items.map((item) => {
-      const found = this.catalog.findVariant(
+    const items: RecoveryCartView['items'] = [];
+    for (const item of cart.items) {
+      const found = await this.catalog.findVariant(
         item.productId,
         item.variantId,
       );
@@ -725,7 +737,7 @@ export class CartRecoveryService implements OnModuleInit {
         found?.variant.price.amountMinor ?? item.unitPrice.amountMinor;
       const lineTotalMinor = unitMinor * item.quantity;
       subtotalMinor += lineTotalMinor;
-      return {
+      items.push({
         productId: item.productId,
         variantId: item.variantId,
         productName: found?.product.name ?? item.productId,
@@ -733,8 +745,8 @@ export class CartRecoveryService implements OnModuleInit {
         quantity: item.quantity,
         unitPrice: money(unitMinor),
         lineTotal: money(lineTotalMinor),
-      };
-    });
+      });
+    }
     return {
       status: 'active',
       message: null,

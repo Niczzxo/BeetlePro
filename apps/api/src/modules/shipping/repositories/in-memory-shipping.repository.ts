@@ -19,23 +19,23 @@ export class InMemoryShippingRepository extends ShippingRepository {
     super();
   }
 
-  create(shipment: Shipment): Shipment {
+  async create(shipment: Shipment): Promise<Shipment> {
     this.db.shipments.set(shipment.id, shipment);
     return shipment;
   }
 
-  save(shipment: Shipment): void {
+  async save(shipment: Shipment): Promise<void> {
     this.db.shipments.set(shipment.id, shipment);
   }
 
-  findById(id: string): Shipment | null {
+  async findById(id: string): Promise<Shipment | null> {
     return this.db.shipments.get(id) ?? null;
   }
 
-  findByTrackingId(
+  async findByTrackingId(
     courier: Courier,
     trackingId: string,
-  ): Shipment | null {
+  ): Promise<Shipment | null> {
     for (const shipment of this.db.shipments.values()) {
       if (
         shipment.courier === courier &&
@@ -47,13 +47,13 @@ export class InMemoryShippingRepository extends ShippingRepository {
     return null;
   }
 
-  listByOrder(orderId: string): Shipment[] {
+  async listByOrder(orderId: string): Promise<Shipment[]> {
     return [...this.db.shipments.values()]
       .filter((shipment) => shipment.orderId === orderId)
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   }
 
-  list(filter: ShipmentListFilter): Shipment[] {
+  async list(filter: ShipmentListFilter): Promise<Shipment[]> {
     return [...this.db.shipments.values()]
       .filter(
         (shipment) =>
@@ -65,20 +65,20 @@ export class InMemoryShippingRepository extends ShippingRepository {
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   }
 
-  addEvent(event: ShipmentStatusEvent): void {
+  async addEvent(event: ShipmentStatusEvent): Promise<void> {
     this.db.shipmentEvents.push(event);
   }
 
-  listEvents(shipmentId: string): ShipmentStatusEvent[] {
+  async listEvents(shipmentId: string): Promise<ShipmentStatusEvent[]> {
     return this.db.shipmentEvents.filter(
       (event) => event.shipmentId === shipmentId,
     );
   }
 
-  recordWebhookDelivery(record: CourierWebhookRecord): {
+  async recordWebhookDelivery(record: CourierWebhookRecord): Promise<{
     record: CourierWebhookRecord;
     duplicate: boolean;
-  } {
+  }> {
     const key = `${record.courier}:${record.providerEventId}`;
     const existing = this.db.courierWebhookEvents.get(key);
     if (existing) return { record: existing, duplicate: true };

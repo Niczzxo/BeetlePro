@@ -17,25 +17,25 @@ export class InMemoryLeadsRepository extends LeadsRepository {
     super();
   }
 
-  create(lead: Lead): Lead {
+  async create(lead: Lead): Promise<Lead> {
     this.db.leads.set(lead.id, lead);
     return lead;
   }
 
-  save(lead: Lead): void {
+  async save(lead: Lead): Promise<void> {
     this.db.leads.set(lead.id, lead);
   }
 
-  findById(id: string): Lead | null {
+  async findById(id: string): Promise<Lead | null> {
     return this.db.leads.get(id) ?? null;
   }
 
-  list(): Lead[] {
+  async list(): Promise<Lead[]> {
     return [...this.db.leads.values()];
   }
 
-  findOpenForVisitor(visitorId: string): Lead[] {
-    return this.list()
+  async findOpenForVisitor(visitorId: string): Promise<Lead[]> {
+    return (await this.list())
       .filter(
         (lead) =>
           lead.visitorId === visitorId &&
@@ -44,8 +44,8 @@ export class InMemoryLeadsRepository extends LeadsRepository {
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   }
 
-  findOpenForCustomer(customerId: string): Lead[] {
-    return this.list()
+  async findOpenForCustomer(customerId: string): Promise<Lead[]> {
+    return (await this.list())
       .filter(
         (lead) =>
           lead.customerId === customerId &&
@@ -54,42 +54,42 @@ export class InMemoryLeadsRepository extends LeadsRepository {
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   }
 
-  appendAttempt(attempt: LeadContactAttempt): LeadContactAttempt {
+  async appendAttempt(attempt: LeadContactAttempt): Promise<LeadContactAttempt> {
     this.db.contactAttempts.push(attempt);
     return attempt;
   }
 
-  listAttempts(leadId: string): LeadContactAttempt[] {
+  async listAttempts(leadId: string): Promise<LeadContactAttempt[]> {
     return this.db.contactAttempts.filter(
       (attempt) => attempt.leadId === leadId,
     );
   }
 
-  createTask(task: FollowUpTask): FollowUpTask {
+  async createTask(task: FollowUpTask): Promise<FollowUpTask> {
     this.db.followUpTasks.set(task.id, task);
     return task;
   }
 
-  saveTask(task: FollowUpTask): void {
+  async saveTask(task: FollowUpTask): Promise<void> {
     this.db.followUpTasks.set(task.id, task);
   }
 
-  findTask(id: string): FollowUpTask | null {
+  async findTask(id: string): Promise<FollowUpTask | null> {
     return this.db.followUpTasks.get(id) ?? null;
   }
 
-  listTasks(leadId: string): FollowUpTask[] {
+  async listTasks(leadId: string): Promise<FollowUpTask[]> {
     return [...this.db.followUpTasks.values()].filter(
       (task) => task.leadId === leadId,
     );
   }
 
-  appendSuppression(record: SuppressionRecord): SuppressionRecord {
+  async appendSuppression(record: SuppressionRecord): Promise<SuppressionRecord> {
     this.db.suppressions.push(record);
     return record;
   }
 
-  listSuppressions(): SuppressionRecord[] {
+  async listSuppressions(): Promise<SuppressionRecord[]> {
     return [...this.db.suppressions];
   }
 }

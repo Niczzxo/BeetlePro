@@ -46,11 +46,11 @@ afterEach(() => {
   }
 });
 
-function requestFor(
+async function requestFor(
   ctx: TestContext,
   overrides: Partial<CheckoutRequest> = {},
-): CheckoutRequest {
-  const { variant } = findVariant(ctx, 'sneakers-court', 'EU 41', 'White');
+): Promise<CheckoutRequest> {
+  const { variant } = await findVariant(ctx, 'sneakers-court', 'EU 41', 'White');
   return {
     lines: [
       {
@@ -75,15 +75,15 @@ async function placeOrder(
     phone: `017${Math.floor(10000000 + Math.random() * 89999999)}`,
     password: 'password123',
   });
-  const order = ctx.checkout.placeOrder(
-    requestFor(ctx, { customerId: customer.id, ...overrides }),
+  const order = await ctx.checkout.placeOrder(
+    await requestFor(ctx, { customerId: customer.id, ...overrides }),
   );
-  const payment = ctx.paymentsRepo.listByOrder(order.id).at(-1);
+  const payment = (await ctx.paymentsRepo.listByOrder(order.id)).at(-1);
   if (!payment) throw new Error('checkout created no payment attempt');
   return { customer, order, payment };
 }
 
-function walkTo(ctx: TestContext, orderNumber: string, target: OrderStatus) {
+async function walkTo(ctx: TestContext, orderNumber: string, target: OrderStatus) {
   const path: OrderStatus[] = [
     'confirmed',
     'processing',
@@ -94,7 +94,7 @@ function walkTo(ctx: TestContext, orderNumber: string, target: OrderStatus) {
     'delivered',
   ];
   for (const status of path) {
-    ctx.ordersService.transition(orderNumber, { status });
+    await ctx.ordersService.transition(orderNumber, { status });
     if (status === target) return;
   }
 }
@@ -108,14 +108,14 @@ describe('COD payments', () => {
     expect(payment.status).toBe('pending-collection');
     expect(order.paymentStatus).toBe('pending-collection');
 
-    walkTo(ctx, order.orderNumber, 'delivered');
+    await walkTo(ctx, order.orderNumber, 'delivered');
 
-    const after = ctx.paymentsRepo.findById(payment.id);
+    const after = await ctx.paymentsRepo.findById(payment.id);
     expect(after?.status).toBe('collected');
-    expect(ctx.orders.findById(order.id)?.paymentStatus).toBe('collected');
-    const eventTypes = ctx.paymentsRepo
-      .listEvents(payment.id)
-      .map((event) => event.type);
+    expect((await ctx.orders.findById(order.id))?.paymentStatus).toBe('collected');
+    const eventTypes = (await ctx.paymentsRepo.listEvents(payment.id)).map(
+      (event) => event.type,
+    );
     expect(eventTypes).toContain('cod-pending-collection');
     expect(eventTypes).toContain('cod-collected');
   });
@@ -123,17 +123,17 @@ describe('COD payments', () => {
   it('is voided when the order is cancelled before delivery', async () => {
     const ctx = createTestContext();
     const { order, payment } = await placeOrder(ctx);
-    ctx.ordersService.transition(order.orderNumber, { status: 'cancelled' });
-    expect(ctx.paymentsRepo.findById(payment.id)?.status).toBe('cancelled');
-    expect(ctx.orders.findById(order.id)?.paymentStatus).toBe('cancelled');
+    await ctx.ordersService.transition(order.orderNumber, { status: 'cancelled' });
+    expect((await ctx.paymentsRepo.findById(payment.id))?.status).toBe('cancelled');
+    expect((await ctx.orders.findById(order.id))?.paymentStatus).toBe('cancelled');
   });
 
   it('is refunded when a delivered order is returned', async () => {
     const ctx = createTestContext();
     const { order, payment } = await placeOrder(ctx);
-    walkTo(ctx, order.orderNumber, 'delivered');
-    ctx.ordersService.transition(order.orderNumber, { status: 'returned' });
-    expect(ctx.paymentsRepo.findById(payment.id)?.status).toBe('refunded');
+    await walkTo(ctx, order.orderNumber, 'delivered');
+    await ctx.ordersService.transition(order.orderNumber, { status: 'returned' });
+    expect((await ctx.paymentsRepo.findById(payment.id))?.status).toBe('refunded');
   });
 });
 
@@ -149,7 +149,7 @@ describe('Manual mobile banking (bkash)', () => {
     expect(payment.instructions?.reference).toBe(order.orderNumber);
     expect(payment.instructions?.text).toContain('placeholder');
 
-    const confirmed = ctx.payments.confirmManualPayment(payment.id, {
+    const confirmed = await ctx.payments.confirmManualPayment(payment.id, {
       senderNumber: '01712345678',
       transactionId: 'TXN12345',
     });
@@ -159,23 +159,23 @@ describe('Manual mobile banking (bkash)', () => {
     // A customer confirmation alone never marks the payment paid.
     expect(confirmed.providerTxnId).toBeNull();
 
-    const verified = ctx.payments.verifyManualPayment(payment.id, {
+    const verified = await ctx.payments.verifyManualPayment(payment.id, {
       decision: 'paid',
       actorId: 'staff-1',
     });
     expect(verified.status).toBe('successful');
     expect(verified.providerTxnId).toBe('TXN12345');
-    expect(ctx.orders.findById(order.id)?.paymentStatus).toBe('successful');
+    expect((await ctx.orders.findById(order.id))?.paymentStatus).toBe('successful');
   });
 
   it('fails the payment when staff reject the confirmation', async () => {
     const ctx = createTestContext();
     const { payment } = await placeOrder(ctx, { paymentMethod: 'bkash' });
-    ctx.payments.confirmManualPayment(payment.id, {
+    await ctx.payments.confirmManualPayment(payment.id, {
       senderNumber: '01712345678',
       transactionId: 'TXN99999',
     });
-    const rejected = ctx.payments.verifyManualPayment(payment.id, {
+    const rejected = await ctx.payments.verifyManualPayment(payment.id, {
       decision: 'rejected',
       note: 'No such transaction',
     });
@@ -185,9 +185,9 @@ describe('Manual mobile banking (bkash)', () => {
   it('refuses to verify a payment that was never confirmed', async () => {
     const ctx = createTestContext();
     const { payment } = await placeOrder(ctx, { paymentMethod: 'nagad' });
-    expect(() =>
+    await expect(
       ctx.payments.verifyManualPayment(payment.id, { decision: 'paid' }),
-    ).toThrow(BadRequestException);
+    ).rejects.toThrow(BadRequestException);
   });
 });
 
@@ -199,14 +199,14 @@ describe('Unconfigured gateways', () => {
     });
     expect(payment.status).toBe('failed');
     expect(order.paymentStatus).toBe('failed');
-    const eventTypes = ctx.paymentsRepo
-      .listEvents(payment.id)
-      .map((event) => event.type);
+    const eventTypes = (await ctx.paymentsRepo.listEvents(payment.id)).map(
+      (event) => event.type,
+    );
     expect(eventTypes).toContain('gateway-not-configured');
     expect(
-      ctx.paymentsRepo
-        .listByOrder(order.id)
-        .some((attempt) => attempt.status === 'successful'),
+      (await ctx.paymentsRepo.listByOrder(order.id)).some(
+        (attempt) => attempt.status === 'successful',
+      ),
     ).toBe(false);
   });
 
@@ -226,9 +226,9 @@ describe('Unconfigured gateways', () => {
       }),
     ).rejects.toThrow(/Gateway not configured/);
     expect(
-      ctx.paymentsRepo
-        .listByOrder(order.id)
-        .some((attempt) => attempt.status === 'successful'),
+      (await ctx.paymentsRepo.listByOrder(order.id)).some(
+        (attempt) => attempt.status === 'successful',
+      ),
     ).toBe(false);
   });
 });
@@ -237,11 +237,11 @@ describe('Refunds', () => {
   it('completes the manual refund flow for a verified manual payment', async () => {
     const ctx = createTestContext();
     const { payment } = await placeOrder(ctx, { paymentMethod: 'bkash' });
-    ctx.payments.confirmManualPayment(payment.id, {
+    await ctx.payments.confirmManualPayment(payment.id, {
       senderNumber: '01712345678',
       transactionId: 'TXN12345',
     });
-    ctx.payments.verifyManualPayment(payment.id, { decision: 'paid' });
+    await ctx.payments.verifyManualPayment(payment.id, { decision: 'paid' });
 
     const refund = await ctx.payments.requestRefund(payment.id, {
       reason: 'Customer returned the shoes',
@@ -249,11 +249,11 @@ describe('Refunds', () => {
     expect(refund.status).toBe('manual-pending');
     expect(refund.amount.amountMinor).toBe(payment.amount.amountMinor);
     // Not refunded until staff confirm the money went back.
-    expect(ctx.paymentsRepo.findById(payment.id)?.status).toBe('successful');
+    expect((await ctx.paymentsRepo.findById(payment.id))?.status).toBe('successful');
 
-    const confirmed = ctx.payments.confirmRefund(payment.id, refund.id, {});
+    const confirmed = await ctx.payments.confirmRefund(payment.id, refund.id, {});
     expect(confirmed.status).toBe('completed');
-    expect(ctx.paymentsRepo.findById(payment.id)?.status).toBe('refunded');
+    expect((await ctx.paymentsRepo.findById(payment.id))?.status).toBe('refunded');
   });
 
   it('refuses a refund on an unpaid payment', async () => {
@@ -269,7 +269,7 @@ describe('Refunds', () => {
     const ctx = createTestContext();
     const { order } = await placeOrder(ctx);
     const now = new Date().toISOString();
-    const gatewayPayment = ctx.paymentsRepo.create({
+    const gatewayPayment = await ctx.paymentsRepo.create({
       id: 'pay-gateway-fixture',
       orderId: order.id,
       gateway: 'sslcommerz',
@@ -286,7 +286,7 @@ describe('Refunds', () => {
     const refund = await ctx.payments.requestRefund(gatewayPayment.id, {});
     expect(refund.status).toBe('gateway-not-configured');
     expect(refund.gatewayNote).toContain('not configured');
-    expect(ctx.paymentsRepo.findById(gatewayPayment.id)?.status).toBe(
+    expect((await ctx.paymentsRepo.findById(gatewayPayment.id))?.status).toBe(
       'successful',
     );
   });
@@ -297,13 +297,13 @@ describe('Reconciliation reads', () => {
     const ctx = createTestContext();
     await placeOrder(ctx);
     await placeOrder(ctx, { paymentMethod: 'bkash' });
-    const all = ctx.payments.listPayments({});
+    const all = await ctx.payments.listPayments({});
     expect(all).toHaveLength(2);
-    expect(ctx.payments.listPayments({ gateway: 'cod' })).toHaveLength(1);
+    expect(await ctx.payments.listPayments({ gateway: 'cod' })).toHaveLength(1);
     expect(
-      ctx.payments.listPayments({ status: 'awaiting-customer' }),
+      await ctx.payments.listPayments({ status: 'awaiting-customer' }),
     ).toHaveLength(1);
-    const summary = ctx.payments.summary();
+    const summary = await ctx.payments.summary();
     expect(summary.count).toBe(2);
     expect(summary.byGateway.map((group) => group.key)).toEqual([
       'bkash',

@@ -30,14 +30,14 @@ export class InventoryController {
   @Get()
   @UseGuards(AuthGuard, PermissionsGuard)
   @RequirePermission('inventory.read')
-  listStock(@Query('productId') productId?: string) {
-    return { items: this.inventory.listStock(productId) };
+  async listStock(@Query('productId') productId?: string) {
+    return { items: await this.inventory.listStock(productId) };
   }
 
   @Get(':variantId')
   @UseGuards(AuthGuard, PermissionsGuard)
   @RequirePermission('inventory.read')
-  getStock(@Param('variantId') variantId: string) {
+  async getStock(@Param('variantId') variantId: string) {
     return this.inventory.getStock(variantId);
   }
 
@@ -46,7 +46,7 @@ export class InventoryController {
   @Post(':variantId/adjust')
   @UseGuards(AuthGuard, PermissionsGuard)
   @RequirePermission('inventory.adjust')
-  adjust(
+  async adjust(
     @Param('variantId') variantId: string,
     @Body() body: unknown,
     @CurrentUser() user: AuthPrincipal | null,

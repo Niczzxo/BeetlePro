@@ -10,6 +10,7 @@ import type {
   CustomerRegistration,
 } from '@dostelo/validation';
 import { hashPassword, verifyPassword } from '../../common/password';
+import type { Tx } from '../../prisma/prisma.service';
 import type { StoredCustomer } from '../../store/in-memory.store';
 import { CustomersRepository } from './repositories/customers.repository';
 
@@ -29,10 +30,10 @@ export class CustomersService {
   }
 
   async register(dto: CustomerRegistration): Promise<Customer> {
-    if (dto.email && this.customers.findByEmail(dto.email)) {
+    if (dto.email && (await this.customers.findByEmail(dto.email))) {
       throw new ConflictException('A customer with this email exists');
     }
-    if (dto.phone && this.customers.findByPhone(dto.phone)) {
+    if (dto.phone && (await this.customers.findByPhone(dto.phone))) {
       throw new ConflictException('A customer with this phone exists');
     }
     const now = new Date().toISOString();
@@ -54,12 +55,12 @@ export class CustomersService {
       createdAt: now,
       updatedAt: now,
     };
-    this.customers.create(customer);
+    await this.customers.create(customer);
     return this.toPublic(customer);
   }
 
-  getProfile(id: string): Customer {
-    const customer = this.customers.findById(id);
+  async getProfile(id: string): Promise<Customer> {
+    const customer = await this.customers.findById(id);
     if (!customer) {
       throw new NotFoundException(`Customer not found: ${id}`);
     }
@@ -72,11 +73,10 @@ export class CustomersService {
    * name, email and phone, and a bounded limit. Password hashes
    * never leave the module: results pass through toPublic.
    */
-  listStaff(options: { search?: string; limit?: number } = {}): Customer[] {
+  async listStaff(options: { search?: string; limit?: number } = {}): Promise<Customer[]> {
     const needle = options.search?.trim().toLowerCase();
     const limit = Math.min(Math.max(options.limit ?? 200, 1), 500);
-    return this.customers
-      .list()
+    return (await this.customers.list())
       .filter((customer) => {
         if (!needle) return true;
         return (
@@ -91,8 +91,8 @@ export class CustomersService {
   }
 
   /** Internal lookup returning the stored record, for checkout. */
-  findStored(id: string): StoredCustomer {
-    const customer = this.customers.findById(id);
+  async findStored(id: string, tx?: Tx): Promise<StoredCustomer> {
+    const customer = await this.customers.findById(id, tx);
     if (!customer) {
       throw new NotFoundException(`Customer not found: ${id}`);
     }
@@ -105,11 +105,14 @@ export class CustomersService {
    * contact details. Mirrors the storefront rule that orders belong
    * to a customer record; account claiming arrives with Phase 4.
    */
-  findOrCreateForCheckout(details: CheckoutCustomer): StoredCustomer {
-    const byPhone = this.customers.findByPhone(details.phone);
+  async findOrCreateForCheckout(
+    details: CheckoutCustomer,
+    tx?: Tx,
+  ): Promise<StoredCustomer> {
+    const byPhone = await this.customers.findByPhone(details.phone, tx);
     if (byPhone) return byPhone;
     if (details.email) {
-      const byEmail = this.customers.findByEmail(details.email);
+      const byEmail = await this.customers.findByEmail(details.email, tx);
       if (byEmail) return byEmail;
     }
     const now = new Date().toISOString();
@@ -129,21 +132,21 @@ export class CustomersService {
       createdAt: now,
       updatedAt: now,
     };
-    this.customers.create(customer);
+    await this.customers.create(customer, tx);
     return customer;
   }
 
   /** Internal lookups returning stored records, for checkout. */
-  findStoredByPhone(phone: string): StoredCustomer | null {
+  async findStoredByPhone(phone: string): Promise<StoredCustomer | null> {
     return this.customers.findByPhone(phone);
   }
 
-  findStoredByEmail(email: string): StoredCustomer | null {
+  async findStoredByEmail(email: string): Promise<StoredCustomer | null> {
     return this.customers.findByEmail(email);
   }
 
   /** Stored record for an email or phone identifier, for auth. */
-  findStoredByIdentifier(identifier: string): StoredCustomer | null {
+  async findStoredByIdentifier(identifier: string): Promise<StoredCustomer | null> {
     return identifier.includes('@')
       ? this.customers.findByEmail(identifier)
       : this.customers.findByPhone(identifier);
@@ -159,7 +162,7 @@ export class CustomersService {
     identifier: string,
     password: string,
   ): Promise<StoredCustomer | null> {
-    const customer = this.findStoredByIdentifier(identifier);
+    const customer = await this.findStoredByIdentifier(identifier);
     if (!customer || !customer.passwordHash) return null;
     const ok = await verifyPassword(password, customer.passwordHash);
     return ok ? customer : null;
@@ -167,12 +170,16 @@ export class CustomersService {
 
   /** Records a placed order against the customer, as the storefront
    * does per account: order count drives the first-order offer. */
-  recordOrder(customerId: string, totalMinor: number): void {
-    const customer = this.customers.findById(customerId);
+  async recordOrder(
+    customerId: string,
+    totalMinor: number,
+    tx?: Tx,
+  ): Promise<void> {
+    const customer = await this.customers.findById(customerId, tx);
     if (!customer) return;
     customer.orderCount += 1;
     customer.lifetimeValueMinor += totalMinor;
     customer.updatedAt = new Date().toISOString();
-    this.customers.save(customer);
+    await this.customers.save(customer, tx);
   }
 }

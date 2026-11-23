@@ -23,7 +23,7 @@ export class RecoveryController {
   @Get(':token')
   @UseGuards(RateLimitGuard)
   @RateLimit(RECOVERY_TOKEN_RATE_LIMIT)
-  getByToken(@Param('token') token: string) {
+  async getByToken(@Param('token') token: string) {
     return this.recovery.getByToken(token);
   }
 }

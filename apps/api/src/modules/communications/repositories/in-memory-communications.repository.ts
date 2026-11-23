@@ -12,12 +12,12 @@ export class InMemoryCommunicationsRepository extends CommunicationsRepository {
     super();
   }
 
-  append(entry: CommunicationLog): CommunicationLog {
+  async append(entry: CommunicationLog): Promise<CommunicationLog> {
     this.db.communicationLogs.push(entry);
     return entry;
   }
 
-  list(filter: CommunicationLogFilter): CommunicationLog[] {
+  async list(filter: CommunicationLogFilter): Promise<CommunicationLog[]> {
     return this.db.communicationLogs
       .filter((entry) => {
         if (filter.channel && entry.channel !== filter.channel) {

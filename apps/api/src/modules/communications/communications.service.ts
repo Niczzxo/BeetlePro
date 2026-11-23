@@ -76,13 +76,11 @@ export class CommunicationsService {
 
   /** Whether contact to this customer or phone is suppressed by
    * a recorded opt-out, across leads and recovery alike. */
-  isSuppressed(target: {
+  async isSuppressed(target: {
     customerId?: string | null;
     phone?: string | null;
-  }): boolean {
-    return this.leads
-      .listSuppressions()
-      .some(
+  }): Promise<boolean> {
+    return (await this.leads.listSuppressions()).some(
         (record) =>
           (target.customerId != null &&
             record.customerId === target.customerId) ||
@@ -120,7 +118,7 @@ export class CommunicationsService {
     const phoneTarget =
       input.channel === 'email' ? null : input.to;
     if (
-      this.isSuppressed({
+      await this.isSuppressed({
         customerId: input.customerId,
         phone: phoneTarget,
       })
@@ -134,7 +132,7 @@ export class CommunicationsService {
     }
     if (
       input.visitorId &&
-      !this.visitors.marketingUsable(input.visitorId)
+      !(await this.visitors.marketingUsable(input.visitorId))
     ) {
       return this.log.append({
         ...base,
@@ -167,10 +165,10 @@ export class CommunicationsService {
    * not have been placed). An 'opted-out' outcome writes a
    * suppression record so no channel contacts the person again.
    */
-  logManualCall(
+  async logManualCall(
     dto: ManualCallLog,
     actor: AuthPrincipal,
-  ): CommunicationLog {
+  ): Promise<CommunicationLog> {
     const base = {
       id: randomUUID(),
       channel: 'call' as const,
@@ -189,19 +187,19 @@ export class CommunicationsService {
     };
 
     if (
-      this.isSuppressed({
+      await this.isSuppressed({
         customerId: dto.customerId,
         phone: dto.phone,
       })
     ) {
-      const refused = this.log.append({
+      const refused = await this.log.append({
         ...base,
         status: 'refused-suppressed',
         callOutcome: null,
         detail:
           'This number is on the suppression list. The call log was refused and no contact should be made.',
       });
-      this.audit.recordForPrincipal(actor, {
+      await this.audit.recordForPrincipal(actor, {
         action: 'communication.call-refused',
         entityType: 'communication',
         entityId: refused.id,
@@ -210,13 +208,13 @@ export class CommunicationsService {
       return refused;
     }
 
-    const entry = this.log.append({
+    const entry = await this.log.append({
       ...base,
       status: 'logged',
       callOutcome: dto.outcome,
       detail: null,
     });
-    this.audit.recordForPrincipal(actor, {
+    await this.audit.recordForPrincipal(actor, {
       action: 'communication.call-logged',
       entityType: 'communication',
       entityId: entry.id,
@@ -228,7 +226,7 @@ export class CommunicationsService {
       },
     });
     if (dto.outcome === 'opted-out') {
-      this.leads.appendSuppression({
+      await this.leads.appendSuppression({
         id: randomUUID(),
         leadId: dto.leadId ?? null,
         customerId: dto.customerId ?? null,
@@ -236,7 +234,7 @@ export class CommunicationsService {
         reason: 'Opt-out recorded on a staff call',
         createdAt: new Date().toISOString(),
       });
-      this.audit.recordForPrincipal(actor, {
+      await this.audit.recordForPrincipal(actor, {
         action: 'communication.opted-out',
         entityType: 'communication',
         entityId: entry.id,
@@ -246,7 +244,7 @@ export class CommunicationsService {
     return entry;
   }
 
-  listLog(filter: CommunicationLogFilter): CommunicationLog[] {
+  async listLog(filter: CommunicationLogFilter): Promise<CommunicationLog[]> {
     return this.log.list(filter);
   }
 

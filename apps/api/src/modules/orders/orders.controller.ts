@@ -36,7 +36,7 @@ export class OrdersController {
    */
   @Get()
   @UseGuards(AuthGuard)
-  list(
+  async list(
     @Query('customerId') customerId: string | undefined,
     @CurrentUser() user: AuthPrincipal | null,
   ) {
@@ -57,11 +57,11 @@ export class OrdersController {
         'Missing required permission: orders.read',
       );
     }
-    return { items: this.orders.listForCustomer(customerId) };
+    return { items: await this.orders.listForCustomer(customerId) };
   }
 
   @Get(':orderNumber')
-  getByNumber(@Param('orderNumber') orderNumber: string) {
+  async getByNumber(@Param('orderNumber') orderNumber: string) {
     return this.orders.getByNumber(orderNumber);
   }
 
@@ -70,7 +70,7 @@ export class OrdersController {
   @Post(':orderNumber/status')
   @UseGuards(AuthGuard, PermissionsGuard)
   @RequirePermission('orders.edit')
-  transition(
+  async transition(
     @Param('orderNumber') orderNumber: string,
     @Body() body: unknown,
     @CurrentUser() user: AuthPrincipal | null,

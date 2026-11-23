@@ -10,6 +10,7 @@ import type {
   CartLineCreate,
   CartLineUpdate,
 } from '@dostelo/validation';
+import type { Tx } from '../../prisma/prisma.service';
 import { CatalogRepository } from '../catalog/repositories/catalog.repository';
 import { InventoryService } from '../inventory/inventory.service';
 import { CartsRepository } from './repositories/carts.repository';
@@ -22,7 +23,7 @@ export class CartsService {
     private readonly inventory: InventoryService,
   ) {}
 
-  createCart(dto: CartCreate): CartView {
+  async createCart(dto: CartCreate): Promise<CartView> {
     const now = new Date().toISOString();
     const cart: Cart = {
       id: randomUUID(),
@@ -33,12 +34,12 @@ export class CartsService {
       createdAt: now,
       updatedAt: now,
     };
-    this.carts.create(cart);
+    await this.carts.create(cart);
     return this.toView(cart);
   }
 
-  private findCart(cartId: string): Cart {
-    const cart = this.carts.findById(cartId);
+  private async findCart(cartId: string): Promise<Cart> {
+    const cart = await this.carts.findById(cartId);
     if (!cart) {
       throw new NotFoundException(`Cart not found: ${cartId}`);
     }
@@ -55,31 +56,38 @@ export class CartsService {
    * and variant names plus a computed line total, and the cart
    * carries the subtotal. Prices are the snapshots taken when the
    * lines were added. */
-  toView(cart: Cart): CartView {
+  async toView(cart: Cart): Promise<CartView> {
     let subtotalMinor = 0;
-    const items = cart.items.map((item) => {
-      const found = this.catalog.findVariant(item.productId, item.variantId);
+    const items: CartView['items'] = [];
+    for (const item of cart.items) {
+      const found = await this.catalog.findVariant(
+        item.productId,
+        item.variantId,
+      );
       const lineTotalMinor =
         item.unitPrice.amountMinor * item.quantity;
       subtotalMinor += lineTotalMinor;
-      return {
+      items.push({
         ...item,
         productName: found?.product.name ?? item.productId,
         variantName: found?.variant.name ?? item.variantId,
         lineTotal: money(lineTotalMinor),
-      };
-    });
+      });
+    }
     return { ...cart, items, subtotal: money(subtotalMinor) };
   }
 
-  getCart(cartId: string): CartView {
-    return this.toView(this.findCart(cartId));
+  async getCart(cartId: string): Promise<CartView> {
+    return this.toView(await this.findCart(cartId));
   }
 
-  addLine(cartId: string, dto: CartLineCreate): CartView {
-    const cart = this.findCart(cartId);
+  async addLine(cartId: string, dto: CartLineCreate): Promise<CartView> {
+    const cart = await this.findCart(cartId);
     this.assertActive(cart);
-    const found = this.catalog.findVariant(dto.productId, dto.variantId);
+    const found = await this.catalog.findVariant(
+      dto.productId,
+      dto.variantId,
+    );
     if (!found || !found.variant.isActive) {
       throw new NotFoundException(
         `Variant not found: ${dto.productId}/${dto.variantId}`,
@@ -89,7 +97,7 @@ export class CartsService {
       (item) => item.variantId === dto.variantId,
     );
     const wanted = (existing?.quantity ?? 0) + dto.quantity;
-    const available = this.inventory.availableFor(dto.variantId);
+    const available = await this.inventory.availableFor(dto.variantId);
     if (wanted > available) {
       throw new BadRequestException(
         `Insufficient stock for variant ${dto.variantId}: requested ${wanted}, available ${available}`,
@@ -109,16 +117,16 @@ export class CartsService {
       });
     }
     cart.updatedAt = new Date().toISOString();
-    this.carts.save(cart);
+    await this.carts.save(cart);
     return this.toView(cart);
   }
 
-  updateLine(
+  async updateLine(
     cartId: string,
     lineId: string,
     dto: CartLineUpdate,
-  ): CartView {
-    const cart = this.findCart(cartId);
+  ): Promise<CartView> {
+    const cart = await this.findCart(cartId);
     this.assertActive(cart);
     const line = cart.items.find((item) => item.id === lineId);
     if (!line) {
@@ -127,7 +135,7 @@ export class CartsService {
     if (dto.quantity === 0) {
       cart.items = cart.items.filter((item) => item.id !== lineId);
     } else {
-      const available = this.inventory.availableFor(line.variantId);
+      const available = await this.inventory.availableFor(line.variantId);
       if (dto.quantity > available) {
         throw new BadRequestException(
           `Insufficient stock for variant ${line.variantId}: requested ${dto.quantity}, available ${available}`,
@@ -136,20 +144,20 @@ export class CartsService {
       line.quantity = dto.quantity;
     }
     cart.updatedAt = new Date().toISOString();
-    this.carts.save(cart);
+    await this.carts.save(cart);
     return this.toView(cart);
   }
 
-  removeLine(cartId: string, lineId: string): CartView {
+  async removeLine(cartId: string, lineId: string): Promise<CartView> {
     return this.updateLine(cartId, lineId, { quantity: 0 });
   }
 
   /** Marks a cart converted when checkout places its order. */
-  markConverted(cartId: string): void {
-    const cart = this.carts.findById(cartId);
+  async markConverted(cartId: string, tx?: Tx): Promise<void> {
+    const cart = await this.carts.findById(cartId, tx);
     if (!cart) return;
     cart.status = 'converted';
     cart.updatedAt = new Date().toISOString();
-    this.carts.save(cart);
+    await this.carts.save(cart, tx);
   }
 }

@@ -12,19 +12,19 @@ export class InMemoryInventoryRepository extends InventoryRepository {
     super();
   }
 
-  getStock(variantId: string): StockRecord | null {
+  async getStock(variantId: string): Promise<StockRecord | null> {
     return this.db.stock.get(variantId) ?? null;
   }
 
-  listStock(
+  async listStock(
     productId?: string,
-  ): (StockRecord & { variantId: string })[] {
+  ): Promise<(StockRecord & { variantId: string })[]> {
     return [...this.db.stock.entries()]
       .filter(([, record]) => !productId || record.productId === productId)
       .map(([variantId, record]) => ({ variantId, ...record }));
   }
 
-  adjust(variantId: string, delta: number): StockRecord {
+  async adjust(variantId: string, delta: number): Promise<StockRecord> {
     const record = this.db.stock.get(variantId);
     if (!record) {
       throw new BadRequestException(`Unknown variant: ${variantId}`);
@@ -39,7 +39,7 @@ export class InMemoryInventoryRepository extends InventoryRepository {
     return record;
   }
 
-  reserve(orderId: string, lines: StockLine[]): void {
+  async reserve(orderId: string, lines: StockLine[]): Promise<void> {
     // Validate every line before mutating any record.
     for (const line of lines) {
       const record = this.db.stock.get(line.variantId);
@@ -62,7 +62,7 @@ export class InMemoryInventoryRepository extends InventoryRepository {
     this.db.reservations.set(orderId, lines);
   }
 
-  release(orderId: string): void {
+  async release(orderId: string): Promise<void> {
     const lines = this.db.reservations.get(orderId);
     if (!lines) return;
     for (const line of lines) {
@@ -72,7 +72,7 @@ export class InMemoryInventoryRepository extends InventoryRepository {
     this.db.reservations.delete(orderId);
   }
 
-  finalize(orderId: string): void {
+  async finalize(orderId: string): Promise<void> {
     const lines = this.db.reservations.get(orderId);
     if (!lines) return;
     for (const line of lines) {

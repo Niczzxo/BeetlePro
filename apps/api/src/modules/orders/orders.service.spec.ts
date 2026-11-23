@@ -14,7 +14,7 @@ async function placeTestOrder(ctx: TestContext): Promise<Order> {
     phone: '01912345678',
     password: 'password123',
   });
-  const { variant } = findVariant(ctx, 'sneakers-court', 'EU 41', 'White');
+  const { variant } = await findVariant(ctx, 'sneakers-court', 'EU 41', 'White');
   return ctx.checkout.placeOrder({
     customerId: customer.id,
     lines: [
@@ -54,22 +54,24 @@ describe('OrdersService status flow', () => {
     ];
     let current = order;
     for (const status of flow) {
-      current = move(ctx, current, status);
+      current = await move(ctx, current, status);
       expect(current.status).toBe(status);
     }
     // One placement event plus one per transition.
-    expect(ctx.orders.listStatusEvents(order.id)).toHaveLength(8);
+    expect(await ctx.orders.listStatusEvents(order.id)).toHaveLength(8);
   });
 
   it('rejects skipping stages and moving out of terminal states', async () => {
     const ctx = createTestContext();
     const order = await placeTestOrder(ctx);
-    expect(() => move(ctx, order, 'shipped')).toThrow(BadRequestException);
-    expect(() => move(ctx, order, 'delivered')).toThrow(
+    await expect(move(ctx, order, 'shipped')).rejects.toThrow(
       BadRequestException,
     );
-    move(ctx, order, 'cancelled');
-    expect(() => move(ctx, order, 'confirmed')).toThrow(
+    await expect(move(ctx, order, 'delivered')).rejects.toThrow(
+      BadRequestException,
+    );
+    await move(ctx, order, 'cancelled');
+    await expect(move(ctx, order, 'confirmed')).rejects.toThrow(
       BadRequestException,
     );
   });
@@ -84,9 +86,9 @@ describe('OrdersService status flow', () => {
       'ready-to-ship',
       'shipped',
     ] as OrderStatus[]) {
-      move(ctx, order, status);
+      await move(ctx, order, status);
     }
-    expect(() => move(ctx, order, 'cancelled')).toThrow(
+    await expect(move(ctx, order, 'cancelled')).rejects.toThrow(
       BadRequestException,
     );
   });
@@ -103,11 +105,11 @@ describe('OrdersService status flow', () => {
       'out-for-delivery',
       'delivered',
     ] as OrderStatus[]) {
-      move(ctx, order, status);
+      await move(ctx, order, status);
     }
-    const returned = move(ctx, order, 'returned');
+    const returned = await move(ctx, order, 'returned');
     expect(returned.status).toBe('returned');
-    expect(() => move(ctx, order, 'confirmed')).toThrow(
+    await expect(move(ctx, order, 'confirmed')).rejects.toThrow(
       BadRequestException,
     );
   });
@@ -115,10 +117,10 @@ describe('OrdersService status flow', () => {
   it('releases the stock reservation when an order is cancelled', async () => {
     const ctx = createTestContext();
     const order = await placeTestOrder(ctx);
-    const { variant } = findVariant(ctx, 'sneakers-court', 'EU 41', 'White');
-    expect(ctx.inventoryService.getStock(variant.id).reserved).toBe(1);
-    move(ctx, order, 'cancelled');
-    const stock = ctx.inventoryService.getStock(variant.id);
+    const { variant } = await findVariant(ctx, 'sneakers-court', 'EU 41', 'White');
+    expect((await ctx.inventoryService.getStock(variant.id)).reserved).toBe(1);
+    await move(ctx, order, 'cancelled');
+    const stock = await ctx.inventoryService.getStock(variant.id);
     expect(stock.reserved).toBe(0);
     expect(stock.available).toBe(stock.onHand);
   });
@@ -126,8 +128,8 @@ describe('OrdersService status flow', () => {
   it('settles the reservation as sold when an order is delivered', async () => {
     const ctx = createTestContext();
     const order = await placeTestOrder(ctx);
-    const { variant } = findVariant(ctx, 'sneakers-court', 'EU 41', 'White');
-    const onHandBefore = ctx.inventoryService.getStock(variant.id).onHand;
+    const { variant } = await findVariant(ctx, 'sneakers-court', 'EU 41', 'White');
+    const onHandBefore = (await ctx.inventoryService.getStock(variant.id)).onHand;
     for (const status of [
       'confirmed',
       'processing',
@@ -137,9 +139,9 @@ describe('OrdersService status flow', () => {
       'out-for-delivery',
       'delivered',
     ] as OrderStatus[]) {
-      move(ctx, order, status);
+      await move(ctx, order, status);
     }
-    const stock = ctx.inventoryService.getStock(variant.id);
+    const stock = await ctx.inventoryService.getStock(variant.id);
     expect(stock.reserved).toBe(0);
     expect(stock.onHand).toBe(onHandBefore - 1);
   });

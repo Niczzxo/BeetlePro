@@ -47,7 +47,7 @@ async function placeCodOrder(ctx: TestContext) {
     phone: `017${Math.floor(10000000 + Math.random() * 89999999)}`,
     password: 'password123',
   });
-  const { variant } = findVariant(ctx, 'sneakers-court', 'EU 41', 'White');
+  const { variant } = await findVariant(ctx, 'sneakers-court', 'EU 41', 'White');
   return ctx.checkout.placeOrder({
     customerId: customer.id,
     lines: [
@@ -64,10 +64,10 @@ async function placeCodOrder(ctx: TestContext) {
   });
 }
 
-function gatewayPaymentFixture(
+async function gatewayPaymentFixture(
   ctx: TestContext,
   overrides: Partial<Payment>,
-): Payment {
+): Promise<Payment> {
   const now = new Date().toISOString();
   return ctx.paymentsRepo.create({
     id: overrides.id ?? `pay-${Math.random().toString(36).slice(2)}`,
@@ -95,7 +95,7 @@ describe('bKash webhooks', () => {
     process.env.BKASH_WEBHOOK_SECRET = BKASH_SECRET;
     const ctx = createTestContext();
     const order = await placeCodOrder(ctx);
-    const payment = gatewayPaymentFixture(ctx, {
+    const payment = await gatewayPaymentFixture(ctx, {
       orderId: order.id,
       providerTxnId: 'BKASH-PAY-1',
     });
@@ -108,20 +108,20 @@ describe('bKash webhooks', () => {
     const rawBody = JSON.stringify(payload);
     const signature = bkashSignature(rawBody, BKASH_SECRET);
 
-    const first = ctx.webhooks.handle('bkash', payload, signature, rawBody);
+    const first = await ctx.webhooks.handle('bkash', payload, signature, rawBody);
     expect(first).toMatchObject({
       received: true,
       duplicate: false,
       applied: true,
       paymentId: payment.id,
     });
-    const applied = ctx.paymentsRepo.findById(payment.id);
+    const applied = await ctx.paymentsRepo.findById(payment.id);
     expect(applied?.status).toBe('successful');
     expect(applied?.providerTxnId).toBe('TRX-100');
-    expect(ctx.orders.findById(order.id)?.paymentStatus).toBe('successful');
-    const eventsAfterFirst = ctx.paymentsRepo.listEvents(payment.id).length;
+    expect((await ctx.orders.findById(order.id))?.paymentStatus).toBe('successful');
+    const eventsAfterFirst = (await ctx.paymentsRepo.listEvents(payment.id)).length;
 
-    const second = ctx.webhooks.handle('bkash', payload, signature, rawBody);
+    const second = await ctx.webhooks.handle('bkash', payload, signature, rawBody);
     expect(second).toMatchObject({
       received: true,
       duplicate: true,
@@ -129,7 +129,7 @@ describe('bKash webhooks', () => {
       paymentId: payment.id,
     });
     // Nothing was applied twice.
-    expect(ctx.paymentsRepo.listEvents(payment.id)).toHaveLength(
+    expect(await ctx.paymentsRepo.listEvents(payment.id)).toHaveLength(
       eventsAfterFirst,
     );
     expect(ctx.db.webhookEvents.size).toBe(1);
@@ -138,7 +138,7 @@ describe('bKash webhooks', () => {
   it('rejects a bad signature and records nothing', async () => {
     process.env.BKASH_WEBHOOK_SECRET = BKASH_SECRET;
     const ctx = createTestContext();
-    const payment = gatewayPaymentFixture(ctx, {
+    const payment = await gatewayPaymentFixture(ctx, {
       providerTxnId: 'BKASH-PAY-2',
     });
     const payload = {
@@ -147,14 +147,14 @@ describe('bKash webhooks', () => {
       status: 'Completed',
     };
     const rawBody = JSON.stringify(payload);
-    expect(() =>
+    await expect(
       ctx.webhooks.handle('bkash', payload, 'deadbeef', rawBody),
-    ).toThrow(UnauthorizedException);
-    expect(ctx.paymentsRepo.findById(payment.id)?.status).toBe('initiated');
+    ).rejects.toThrow(UnauthorizedException);
+    expect((await ctx.paymentsRepo.findById(payment.id))?.status).toBe('initiated');
     expect(ctx.db.webhookEvents.size).toBe(0);
   });
 
-  it('rejects deliveries when no webhook secret is configured', () => {
+  it('rejects deliveries when no webhook secret is configured', async () => {
     const ctx = createTestContext();
     const payload = {
       paymentID: 'BKASH-PAY-3',
@@ -162,14 +162,14 @@ describe('bKash webhooks', () => {
       status: 'Completed',
     };
     const rawBody = JSON.stringify(payload);
-    expect(() =>
+    await expect(
       ctx.webhooks.handle(
         'bkash',
         payload,
         bkashSignature(rawBody, BKASH_SECRET),
         rawBody,
       ),
-    ).toThrow(ServiceUnavailableException);
+    ).rejects.toThrow(ServiceUnavailableException);
     expect(ctx.db.webhookEvents.size).toBe(0);
   });
 });
@@ -198,20 +198,20 @@ describe('SSLCommerz webhooks', () => {
     process.env.SSLCOMMERZ_STORE_PASSWORD = SSL_PASSWORD;
     const ctx = createTestContext();
     const order = await placeCodOrder(ctx);
-    const payment = gatewayPaymentFixture(ctx, {
+    const payment = await gatewayPaymentFixture(ctx, {
       id: 'pay-ssl-1',
       orderId: order.id,
       gateway: 'sslcommerz',
     });
     const payload = sslPayload(payment.id);
 
-    const first = ctx.webhooks.handle('sslcommerz', payload, undefined, undefined);
+    const first = await ctx.webhooks.handle('sslcommerz', payload, undefined, undefined);
     expect(first).toMatchObject({ duplicate: false, applied: true });
-    const applied = ctx.paymentsRepo.findById(payment.id);
+    const applied = await ctx.paymentsRepo.findById(payment.id);
     expect(applied?.status).toBe('successful');
     expect(applied?.providerTxnId).toBe('VAL-900');
 
-    const second = ctx.webhooks.handle(
+    const second = await ctx.webhooks.handle(
       'sslcommerz',
       payload,
       undefined,
@@ -223,29 +223,29 @@ describe('SSLCommerz webhooks', () => {
   it('rejects an IPN with a tampered signature', async () => {
     process.env.SSLCOMMERZ_STORE_PASSWORD = SSL_PASSWORD;
     const ctx = createTestContext();
-    const payment = gatewayPaymentFixture(ctx, {
+    const payment = await gatewayPaymentFixture(ctx, {
       id: 'pay-ssl-2',
       gateway: 'sslcommerz',
     });
     const payload = { ...sslPayload(payment.id), verify_sign: 'f'.repeat(32) };
-    expect(() =>
+    await expect(
       ctx.webhooks.handle('sslcommerz', payload, undefined, undefined),
-    ).toThrow(UnauthorizedException);
-    expect(ctx.paymentsRepo.findById(payment.id)?.status).toBe('initiated');
+    ).rejects.toThrow(UnauthorizedException);
+    expect((await ctx.paymentsRepo.findById(payment.id))?.status).toBe('initiated');
   });
 });
 
 describe('Webhook endpoints that do not exist', () => {
-  it('404s for cod and the manual methods', () => {
+  it('404s for cod and the manual methods', async () => {
     const ctx = createTestContext();
-    expect(() => ctx.webhooks.handle('cod', {}, undefined, undefined)).toThrow(
+    await expect(ctx.webhooks.handle('cod', {}, undefined, undefined)).rejects.toThrow(
       NotFoundException,
     );
-    expect(() =>
+    await expect(
       ctx.webhooks.handle('nagad', {}, undefined, undefined),
-    ).toThrow(NotFoundException);
-    expect(() =>
+    ).rejects.toThrow(NotFoundException);
+    await expect(
       ctx.webhooks.handle('rocket', {}, undefined, undefined),
-    ).toThrow(NotFoundException);
+    ).rejects.toThrow(NotFoundException);
   });
 });

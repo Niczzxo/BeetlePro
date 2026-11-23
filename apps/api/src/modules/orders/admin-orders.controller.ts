@@ -18,9 +18,9 @@ export class AdminOrdersController {
 
   @Get()
   @RequirePermission('orders.read')
-  list(@Query('status') status?: string) {
+  async list(@Query('status') status?: string) {
     return {
-      items: this.orders.listAll(
+      items: await this.orders.listAll(
         ORDER_STATUSES.includes(status as OrderStatus)
           ? (status as OrderStatus)
           : undefined,
@@ -30,7 +30,7 @@ export class AdminOrdersController {
 
   @Get(':orderNumber')
   @RequirePermission('orders.read')
-  detail(@Param('orderNumber') orderNumber: string) {
+  async detail(@Param('orderNumber') orderNumber: string) {
     return this.orders.getDetail(orderNumber);
   }
 }

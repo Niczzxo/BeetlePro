@@ -11,6 +11,7 @@ import { SmsProvider } from './providers/sms.provider';
 import { WhatsappProvider } from './providers/whatsapp.provider';
 import { CommunicationsRepository } from './repositories/communications.repository';
 import { InMemoryCommunicationsRepository } from './repositories/in-memory-communications.repository';
+import { PrismaCommunicationsRepository } from './repositories/prisma-communications.repository';
 
 /**
  * Communications module (Phase 6): the Communication Center.
@@ -31,7 +32,9 @@ import { InMemoryCommunicationsRepository } from './repositories/in-memory-commu
     ManualCallProvider,
     {
       provide: CommunicationsRepository,
-      useClass: InMemoryCommunicationsRepository,
+      useClass: process.env.DATABASE_URL
+        ? PrismaCommunicationsRepository
+        : InMemoryCommunicationsRepository,
     },
   ],
   exports: [CommunicationsService, CommunicationsRepository],

@@ -7,17 +7,17 @@ export class CatalogController {
   constructor(private readonly catalog: CatalogService) {}
 
   @Get('products')
-  listProducts(@Query('category') category?: string) {
+  async listProducts(@Query('category') category?: string) {
     return this.catalog.listProducts(category);
   }
 
   @Get('products/:key')
-  getProduct(@Param('key') key: string) {
+  async getProduct(@Param('key') key: string) {
     return this.catalog.getProduct(key);
   }
 
   @Get('categories')
-  listCategories() {
-    return { items: this.catalog.listCategories() };
+  async listCategories() {
+    return { items: await this.catalog.listCategories() };
   }
 }

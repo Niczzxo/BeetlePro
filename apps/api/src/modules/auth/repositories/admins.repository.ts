@@ -1,3 +1,4 @@
+import type { Tx } from '../../../prisma/prisma.service';
 import type { StoredAdminUser } from '../../../store/in-memory.store';
 
 /**
@@ -6,9 +7,18 @@ import type { StoredAdminUser } from '../../../store/in-memory.store';
  * TOTP secret never leave the API.
  */
 export abstract class AdminsRepository {
-  abstract create(admin: StoredAdminUser): StoredAdminUser;
-  abstract save(admin: StoredAdminUser): void;
-  abstract findById(id: string): StoredAdminUser | null;
-  abstract findByEmail(email: string): StoredAdminUser | null;
-  abstract count(): number;
+  abstract create(
+    admin: StoredAdminUser,
+    tx?: Tx,
+  ): Promise<StoredAdminUser>;
+  abstract save(admin: StoredAdminUser, tx?: Tx): Promise<void>;
+  abstract findById(
+    id: string,
+    tx?: Tx,
+  ): Promise<StoredAdminUser | null>;
+  abstract findByEmail(
+    email: string,
+    tx?: Tx,
+  ): Promise<StoredAdminUser | null>;
+  abstract count(tx?: Tx): Promise<number>;
 }

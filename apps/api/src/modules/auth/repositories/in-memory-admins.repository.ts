@@ -11,20 +11,20 @@ export class InMemoryAdminsRepository extends AdminsRepository {
     super();
   }
 
-  create(admin: StoredAdminUser): StoredAdminUser {
+  async create(admin: StoredAdminUser): Promise<StoredAdminUser> {
     this.db.adminUsers.set(admin.id, admin);
     return admin;
   }
 
-  save(admin: StoredAdminUser): void {
+  async save(admin: StoredAdminUser): Promise<void> {
     this.db.adminUsers.set(admin.id, admin);
   }
 
-  findById(id: string): StoredAdminUser | null {
+  async findById(id: string): Promise<StoredAdminUser | null> {
     return this.db.adminUsers.get(id) ?? null;
   }
 
-  findByEmail(email: string): StoredAdminUser | null {
+  async findByEmail(email: string): Promise<StoredAdminUser | null> {
     const needle = email.toLowerCase();
     return (
       [...this.db.adminUsers.values()].find(
@@ -33,7 +33,7 @@ export class InMemoryAdminsRepository extends AdminsRepository {
     );
   }
 
-  count(): number {
+  async count(): Promise<number> {
     return this.db.adminUsers.size;
   }
 }

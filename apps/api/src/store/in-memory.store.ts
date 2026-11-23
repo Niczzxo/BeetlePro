@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { DEFAULT_MANUAL_INSTRUCTIONS } from './settings.repository';
 import type {
   AbandonedCart,
   AdminRole,
@@ -221,22 +222,10 @@ export class InMemoryDatabase {
     freeDeliveryOffer: false,
     /**
      * Receiving instructions for manual mobile banking, one entry
-     * per method. These are store-configured texts: the store
-     * replaces the placeholder with its real receiving number and
-     * wording (in the database-backed settings, once those land).
-     * The placeholder mirrors the live storefront, which shares
-     * the number by SMS with the order confirmation; no real
-     * number is stored in code.
+     * per method. The defaults live with the settings repository
+     * (DEFAULT_MANUAL_INSTRUCTIONS in settings.repository.ts) so
+     * the in-memory store and the database seed share one text.
      */
-    manualInstructions: {
-      bkash:
-        'Store-configured placeholder: send money to the Dostelo bKash number shared by SMS with your order confirmation. Use the reference below (your order number).',
-      nagad:
-        'Store-configured placeholder: send money to the Dostelo Nagad number shared by SMS with your order confirmation. Use the reference below (your order number).',
-      rocket:
-        'Store-configured placeholder: send money to the Dostelo Rocket number shared by SMS with your order confirmation. Use the reference below (your order number).',
-      upay:
-        'Store-configured placeholder: send money to the Dostelo Upay number shared by SMS with your order confirmation. Use the reference below (your order number).',
-    } as Record<'bkash' | 'nagad' | 'rocket' | 'upay', string>,
+    manualInstructions: { ...DEFAULT_MANUAL_INSTRUCTIONS },
   };
 }

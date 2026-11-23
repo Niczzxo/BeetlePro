@@ -5,6 +5,7 @@ import { PaymentsController } from './payments.controller';
 import { PaymentsService } from './payments.service';
 import { PaymentsRepository } from './repositories/payments.repository';
 import { InMemoryPaymentsRepository } from './repositories/in-memory-payments.repository';
+import { PrismaPaymentsRepository } from './repositories/prisma-payments.repository';
 import { PaymentProviderRegistry } from './providers/payment-provider.registry';
 import { CodPaymentProvider } from './providers/cod.provider';
 import { ManualMobileBankingProvider } from './providers/manual-mobile-banking.provider';
@@ -29,7 +30,7 @@ import { BkashGatewayProvider } from './providers/bkash-gateway.provider';
     ManualMobileBankingProvider,
     SslcommerzProvider,
     BkashGatewayProvider,
-    { provide: PaymentsRepository, useClass: InMemoryPaymentsRepository },
+    { provide: PaymentsRepository, useClass: process.env.DATABASE_URL ? PrismaPaymentsRepository : InMemoryPaymentsRepository },
   ],
   exports: [PaymentsService, PaymentsRepository],
 })

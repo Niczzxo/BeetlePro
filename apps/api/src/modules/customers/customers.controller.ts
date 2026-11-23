@@ -29,7 +29,7 @@ export class CustomersController {
   constructor(private readonly customers: CustomersService) {}
 
   @Post('register')
-  register(@Body() body: unknown) {
+  async register(@Body() body: unknown) {
     const dto: CustomerRegistration = parseBody(
       customerRegistrationSchema,
       body,
@@ -46,10 +46,10 @@ export class CustomersController {
   @Get()
   @UseGuards(AuthGuard, PermissionsGuard)
   @RequirePermission('customers.read')
-  list(@Query('search') search?: string, @Query('limit') limit?: string) {
+  async list(@Query('search') search?: string, @Query('limit') limit?: string) {
     const parsedLimit = limit ? Number(limit) : undefined;
     return {
-      items: this.customers.listStaff({
+      items: await this.customers.listStaff({
         search: search || undefined,
         limit:
           parsedLimit && parsedLimit > 0 ? parsedLimit : undefined,
@@ -65,7 +65,7 @@ export class CustomersController {
    */
   @Get(':id')
   @UseGuards(AuthGuard)
-  getProfile(
+  async getProfile(
     @Param('id') id: string,
     @CurrentUser() user: AuthPrincipal | null,
   ) {

@@ -24,7 +24,7 @@ export class WebhooksController {
   constructor(private readonly webhooks: WebhooksService) {}
 
   @Post(':gateway')
-  handle(
+  async handle(
     @Param('gateway') gateway: string,
     @Body() body: unknown,
     @Headers('x-bkash-signature') bkashSignature: string | undefined,

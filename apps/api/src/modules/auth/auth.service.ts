@@ -65,7 +65,7 @@ export class AuthService implements OnModuleInit {
     private readonly audit: AuditService,
   ) {}
 
-  onModuleInit(): void {
+  async onModuleInit(): Promise<void> {
     void this.seedAdminFromEnvironment();
   }
 
@@ -83,7 +83,7 @@ export class AuthService implements OnModuleInit {
     const email = process.env.ADMIN_SEED_EMAIL?.trim();
     const password = process.env.ADMIN_SEED_PASSWORD;
     if (!email || !password) return null;
-    const existing = this.admins.findByEmail(email);
+    const existing = await this.admins.findByEmail(email);
     if (existing) return existing;
     const requestedRole = process.env.ADMIN_SEED_ROLE?.trim();
     const role: AdminRole = ADMIN_ROLES.includes(
@@ -104,8 +104,8 @@ export class AuthService implements OnModuleInit {
       createdAt: now,
       updatedAt: now,
     };
-    this.admins.create(admin);
-    this.audit.record({
+    await this.admins.create(admin);
+    await this.audit.record({
       actorType: 'system',
       actorId: null,
       action: 'admin.seeded',
@@ -124,13 +124,15 @@ export class AuthService implements OnModuleInit {
     dto: CustomerRegistration,
   ): Promise<{ customer: Customer; tokens: AuthTokens }> {
     const customer = await this.customers.register(dto);
-    const tokens = this.tokens.issuePair({
-      type: 'customer',
-      id: customer.id,
-      name: customer.fullName,
-      roles: [],
-      permissions: [],
-    }).tokens;
+    const tokens = (
+      await this.tokens.issuePair({
+        type: 'customer',
+        id: customer.id,
+        name: customer.fullName,
+        roles: [],
+        permissions: [],
+      })
+    ).tokens;
     return { customer, tokens };
   }
 
@@ -143,8 +145,8 @@ export class AuthService implements OnModuleInit {
       dto.password,
     );
     if (!customer) {
-      const known = this.customers.findStoredByIdentifier(dto.identifier);
-      this.audit.record({
+      const known = await this.customers.findStoredByIdentifier(dto.identifier);
+      await this.audit.record({
         actorType: 'customer',
         actorId: known?.id ?? null,
         action: 'auth.login.failed',
@@ -155,7 +157,7 @@ export class AuthService implements OnModuleInit {
       });
       throw new UnauthorizedException('Invalid credentials');
     }
-    this.audit.record({
+    await this.audit.record({
       actorType: 'customer',
       actorId: customer.id,
       action: 'auth.login.succeeded',
@@ -163,13 +165,15 @@ export class AuthService implements OnModuleInit {
       entityId: customer.id,
       ipAddress: ip,
     });
-    return this.tokens.issuePair({
-      type: 'customer',
-      id: customer.id,
-      name: customer.fullName,
-      roles: [],
-      permissions: [],
-    }).tokens;
+    return (
+      await this.tokens.issuePair({
+        type: 'customer',
+        id: customer.id,
+        name: customer.fullName,
+        roles: [],
+        permissions: [],
+      })
+    ).tokens;
   }
 
   // ----------------------------------------------------------------
@@ -180,18 +184,18 @@ export class AuthService implements OnModuleInit {
     dto: AdminLogin,
     ip: string | null,
   ): Promise<AdminLoginResult> {
-    const admin = this.admins.findByEmail(dto.email);
+    const admin = await this.admins.findByEmail(dto.email);
     if (!admin) {
-      if (this.admins.count() === 0) {
+      if ((await this.admins.count()) === 0) {
         throw new ServiceUnavailableException(
           'Admin login is not configured: no admin account has been seeded. Set ADMIN_SEED_EMAIL and ADMIN_SEED_PASSWORD and restart the API.',
         );
       }
-      this.recordAdminLoginFailure(null, dto.email, ip, 'unknown-email');
+      await this.recordAdminLoginFailure(null, dto.email, ip, 'unknown-email');
       throw new UnauthorizedException('Invalid credentials');
     }
     if (!admin.isActive) {
-      this.recordAdminLoginFailure(admin, dto.email, ip, 'inactive');
+      await this.recordAdminLoginFailure(admin, dto.email, ip, 'inactive');
       throw new UnauthorizedException('This admin account is disabled');
     }
     const passwordOk = await verifyPassword(
@@ -199,7 +203,7 @@ export class AuthService implements OnModuleInit {
       admin.passwordHash,
     );
     if (!passwordOk) {
-      this.recordAdminLoginFailure(admin, dto.email, ip, 'bad-password');
+      await this.recordAdminLoginFailure(admin, dto.email, ip, 'bad-password');
       throw new UnauthorizedException('Invalid credentials');
     }
     if (admin.mfaEnabled && admin.mfaSecret) {
@@ -210,7 +214,7 @@ export class AuthService implements OnModuleInit {
         expiresAt,
         attempts: 0,
       });
-      this.audit.record({
+      await this.audit.record({
         actorType: 'admin',
         actorId: admin.id,
         actorRole: admin.roles[0] ?? null,
@@ -230,11 +234,11 @@ export class AuthService implements OnModuleInit {
 
   /** Second step of MFA login: exchange a challenge plus a valid
    * TOTP code for the token pair. */
-  exchangeMfaChallenge(
+  async exchangeMfaChallenge(
     challengeId: string,
     code: string,
     ip: string | null,
-  ): AuthTokens {
+  ): Promise<AuthTokens> {
     const challenge = this.challenges.get(challengeId);
     if (!challenge || challenge.expiresAt <= Date.now()) {
       this.challenges.delete(challengeId);
@@ -242,7 +246,7 @@ export class AuthService implements OnModuleInit {
         'MFA challenge is unknown or has expired. Log in again.',
       );
     }
-    const admin = this.admins.findById(challenge.adminId);
+    const admin = await this.admins.findById(challenge.adminId);
     if (!admin || !admin.mfaSecret) {
       this.challenges.delete(challengeId);
       throw new UnauthorizedException(
@@ -257,7 +261,7 @@ export class AuthService implements OnModuleInit {
       );
     }
     if (!verifyTotp(admin.mfaSecret, code)) {
-      this.audit.record({
+      await this.audit.record({
         actorType: 'admin',
         actorId: admin.id,
         actorRole: admin.roles[0] ?? null,
@@ -279,11 +283,11 @@ export class AuthService implements OnModuleInit {
   /** Starts enrolment: generates and stores a secret and returns
    * it with the otpauth URL for an authenticator app. MFA is not
    * active until enableMfa confirms a code from that secret. */
-  enrollMfa(
+  async enrollMfa(
     principal: AuthPrincipal,
     ip: string | null,
-  ): { secret: string; otpauthUrl: string } {
-    const admin = this.requireAdmin(principal);
+  ): Promise<{ secret: string; otpauthUrl: string }> {
+    const admin = await this.requireAdmin(principal);
     if (admin.mfaEnabled) {
       throw new BadRequestException(
         'MFA is already enabled on this account. Disable it before enrolling again.',
@@ -292,8 +296,8 @@ export class AuthService implements OnModuleInit {
     const secret = generateTotpSecret();
     admin.mfaSecret = secret;
     admin.updatedAt = new Date().toISOString();
-    this.admins.save(admin);
-    this.audit.record({
+    await this.admins.save(admin);
+    await this.audit.record({
       actorType: 'admin',
       actorId: admin.id,
       actorRole: admin.roles[0] ?? null,
@@ -308,12 +312,12 @@ export class AuthService implements OnModuleInit {
     };
   }
 
-  enableMfa(
+  async enableMfa(
     principal: AuthPrincipal,
     code: string,
     ip: string | null,
-  ): { mfaEnabled: true } {
-    const admin = this.requireAdmin(principal);
+  ): Promise<{ mfaEnabled: true }> {
+    const admin = await this.requireAdmin(principal);
     if (admin.mfaEnabled) {
       throw new BadRequestException('MFA is already enabled');
     }
@@ -327,8 +331,8 @@ export class AuthService implements OnModuleInit {
     }
     admin.mfaEnabled = true;
     admin.updatedAt = new Date().toISOString();
-    this.admins.save(admin);
-    this.audit.record({
+    await this.admins.save(admin);
+    await this.audit.record({
       actorType: 'admin',
       actorId: admin.id,
       actorRole: admin.roles[0] ?? null,
@@ -340,12 +344,12 @@ export class AuthService implements OnModuleInit {
     return { mfaEnabled: true };
   }
 
-  disableMfa(
+  async disableMfa(
     principal: AuthPrincipal,
     code: string,
     ip: string | null,
-  ): { mfaEnabled: false } {
-    const admin = this.requireAdmin(principal);
+  ): Promise<{ mfaEnabled: false }> {
+    const admin = await this.requireAdmin(principal);
     if (!admin.mfaEnabled || !admin.mfaSecret) {
       throw new BadRequestException('MFA is not enabled on this account');
     }
@@ -355,8 +359,8 @@ export class AuthService implements OnModuleInit {
     admin.mfaEnabled = false;
     admin.mfaSecret = null;
     admin.updatedAt = new Date().toISOString();
-    this.admins.save(admin);
-    this.audit.record({
+    await this.admins.save(admin);
+    await this.audit.record({
       actorType: 'admin',
       actorId: admin.id,
       actorRole: admin.roles[0] ?? null,
@@ -377,14 +381,14 @@ export class AuthService implements OnModuleInit {
    * means the chain leaked: the whole family is revoked and the
    * caller must log in again.
    */
-  refresh(refreshToken: string): AuthTokens {
-    const session = this.tokens.findSessionByRefreshToken(refreshToken);
+  async refresh(refreshToken: string): Promise<AuthTokens> {
+    const session = await this.tokens.findSessionByRefreshToken(refreshToken);
     if (!session) {
       throw new UnauthorizedException('Invalid refresh token');
     }
     if (session.revokedAt) {
       if (session.replacedById) {
-        this.tokens.revokeFamily(session.familyId);
+        await this.tokens.revokeFamily(session.familyId);
         throw new UnauthorizedException(
           'Refresh token reuse detected. All sessions for this login have been revoked; log in again.',
         );
@@ -392,25 +396,25 @@ export class AuthService implements OnModuleInit {
       throw new UnauthorizedException('This session has been revoked');
     }
     if (session.expiresAt <= new Date().toISOString()) {
-      this.tokens.revoke(session, null);
+      await this.tokens.revoke(session, null);
       throw new UnauthorizedException('Refresh token has expired');
     }
-    const principal = this.principalForSession(session.subjectType, session.subjectId);
+    const principal = await this.principalForSession(session.subjectType, session.subjectId);
     if (!principal) {
-      this.tokens.revokeFamily(session.familyId);
+      await this.tokens.revokeFamily(session.familyId);
       throw new UnauthorizedException('The session owner no longer exists');
     }
-    const issued = this.tokens.issuePair(principal, session.familyId);
-    this.tokens.revoke(session, issued.session.id);
+    const issued = await this.tokens.issuePair(principal, session.familyId);
+    await this.tokens.revoke(session, issued.session.id);
     return issued.tokens;
   }
 
   /** Revokes the session behind a refresh token. Idempotent:
    * unknown tokens answer as if revoked. */
-  logout(refreshToken: string): { revoked: boolean } {
-    const session = this.tokens.findSessionByRefreshToken(refreshToken);
+  async logout(refreshToken: string): Promise<{ revoked: boolean }> {
+    const session = await this.tokens.findSessionByRefreshToken(refreshToken);
     if (session && !session.revokedAt) {
-      this.tokens.revoke(session, null);
+      await this.tokens.revoke(session, null);
       return { revoked: true };
     }
     return { revoked: false };
@@ -420,14 +424,14 @@ export class AuthService implements OnModuleInit {
   // Internals
   // ----------------------------------------------------------------
 
-  private principalForSession(
+  private async principalForSession(
     type: 'customer' | 'admin',
     subjectId: string,
-  ): AuthPrincipal | null {
+  ): Promise<AuthPrincipal | null> {
     if (type === 'customer') {
-      let customer: ReturnType<CustomersService['findStored']>;
+      let customer: Awaited<ReturnType<CustomersService['findStored']>>;
       try {
-        customer = this.customers.findStored(subjectId);
+        customer = await this.customers.findStored(subjectId);
       } catch {
         return null;
       }
@@ -439,7 +443,7 @@ export class AuthService implements OnModuleInit {
         permissions: [],
       };
     }
-    const admin = this.admins.findById(subjectId);
+    const admin = await this.admins.findById(subjectId);
     if (!admin || !admin.isActive) return null;
     return {
       type: 'admin',
@@ -450,12 +454,12 @@ export class AuthService implements OnModuleInit {
     };
   }
 
-  private issueAdminTokens(
+  private async issueAdminTokens(
     admin: StoredAdminUser,
     ip: string | null,
     metadata: { mfa: boolean },
-  ): AuthTokens {
-    this.audit.record({
+  ): Promise<AuthTokens> {
+    await this.audit.record({
       actorType: 'admin',
       actorId: admin.id,
       actorRole: admin.roles[0] ?? null,
@@ -465,22 +469,24 @@ export class AuthService implements OnModuleInit {
       metadata,
       ipAddress: ip,
     });
-    return this.tokens.issuePair({
-      type: 'admin',
-      id: admin.id,
-      name: admin.displayName,
-      roles: admin.roles,
-      permissions: permissionsForRoles(admin.roles),
-    }).tokens;
+    return (
+      await this.tokens.issuePair({
+        type: 'admin',
+        id: admin.id,
+        name: admin.displayName,
+        roles: admin.roles,
+        permissions: permissionsForRoles(admin.roles),
+      })
+    ).tokens;
   }
 
-  private recordAdminLoginFailure(
+  private async recordAdminLoginFailure(
     admin: StoredAdminUser | null,
     email: string,
     ip: string | null,
     reason: string,
-  ): void {
-    this.audit.record({
+  ): Promise<void> {
+    await this.audit.record({
       actorType: 'admin',
       actorId: admin?.id ?? null,
       actorRole: admin?.roles[0] ?? null,
@@ -492,11 +498,13 @@ export class AuthService implements OnModuleInit {
     });
   }
 
-  private requireAdmin(principal: AuthPrincipal): StoredAdminUser {
+  private async requireAdmin(
+    principal: AuthPrincipal,
+  ): Promise<StoredAdminUser> {
     if (principal.type !== 'admin') {
       throw new ForbiddenException('This action needs an admin account');
     }
-    const admin = this.admins.findById(principal.id);
+    const admin = await this.admins.findById(principal.id);
     if (!admin) {
       throw new UnauthorizedException('Admin account not found');
     }

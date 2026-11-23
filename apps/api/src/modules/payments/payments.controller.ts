@@ -67,13 +67,13 @@ export class PaymentsController {
   @Get()
   @UseGuards(AuthGuard, PermissionsGuard)
   @RequirePermission('payments.read')
-  list(
+  async list(
     @Query('gateway') gateway?: string,
     @Query('status') status?: string,
     @Query('orderId') orderId?: string,
   ) {
     return {
-      items: this.payments.listPayments({
+      items: await this.payments.listPayments({
         gateway: PAYMENT_GATEWAYS.includes(gateway as PaymentGateway)
           ? (gateway as PaymentGateway)
           : undefined,
@@ -91,7 +91,7 @@ export class PaymentsController {
   @Get('summary')
   @UseGuards(AuthGuard, PermissionsGuard)
   @RequirePermission('payments.read')
-  summary() {
+  async summary() {
     return this.payments.summary();
   }
 
@@ -100,7 +100,7 @@ export class PaymentsController {
   @Get(':paymentId')
   @UseGuards(AuthGuard, PermissionsGuard)
   @RequirePermission('payments.read')
-  get(@Param('paymentId') paymentId: string) {
+  async get(@Param('paymentId') paymentId: string) {
     return this.payments.getPayment(paymentId);
   }
 
@@ -117,7 +117,7 @@ export class PaymentsController {
    * sent money from and the transaction id. Moves the payment to
    * verification-pending; it is not paid until staff verify. */
   @Post(':paymentId/confirm')
-  confirmManual(
+  async confirmManual(
     @Param('paymentId') paymentId: string,
     @Body() body: unknown,
   ) {
@@ -133,7 +133,7 @@ export class PaymentsController {
   @Post(':paymentId/verify')
   @UseGuards(AuthGuard, PermissionsGuard)
   @RequirePermission('payments.verify')
-  verifyManual(
+  async verifyManual(
     @Param('paymentId') paymentId: string,
     @Body() body: unknown,
     @CurrentUser() user: AuthPrincipal | null,
@@ -161,7 +161,7 @@ export class PaymentsController {
   @Post(':paymentId/refunds/:refundId/confirm')
   @UseGuards(AuthGuard, PermissionsGuard)
   @RequirePermission('payments.refund')
-  confirmRefund(
+  async confirmRefund(
     @Param('paymentId') paymentId: string,
     @Param('refundId') refundId: string,
     @Body() body: unknown,

@@ -3,12 +3,13 @@ import { CatalogController } from './catalog.controller';
 import { CatalogService } from './catalog.service';
 import { CatalogRepository } from './repositories/catalog.repository';
 import { InMemoryCatalogRepository } from './repositories/in-memory-catalog.repository';
+import { PrismaCatalogRepository } from './repositories/prisma-catalog.repository';
 
 @Module({
   controllers: [CatalogController],
   providers: [
     CatalogService,
-    { provide: CatalogRepository, useClass: InMemoryCatalogRepository },
+    { provide: CatalogRepository, useClass: process.env.DATABASE_URL ? PrismaCatalogRepository : InMemoryCatalogRepository },
   ],
   exports: [CatalogService, CatalogRepository],
 })

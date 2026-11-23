@@ -28,10 +28,10 @@ export class TokenService {
 
   /** Issues a pair. Pass an existing familyId to continue a
    * family (rotation); omit it to start a new one (login). */
-  issuePair(
+  async issuePair(
     principal: AuthPrincipal,
     familyId?: string,
-  ): { tokens: AuthTokens; session: StoredSession } {
+  ): Promise<{ tokens: AuthTokens; session: StoredSession }> {
     const refreshToken = randomBytes(32).toString('base64url');
     const now = new Date();
     const session: StoredSession = {
@@ -47,7 +47,7 @@ export class TokenService {
       ).toISOString(),
       createdAt: now.toISOString(),
     };
-    this.sessions.create(session);
+    await this.sessions.create(session);
     const { token, expiresIn } = signAccessToken({
       subjectId: principal.id,
       subjectType: principal.type,
@@ -72,25 +72,25 @@ export class TokenService {
     };
   }
 
-  findSessionByRefreshToken(token: string): StoredSession | null {
+  async findSessionByRefreshToken(token: string): Promise<StoredSession | null> {
     return this.sessions.findByRefreshHash(hashRefreshToken(token));
   }
 
   /** Marks a session revoked. With replacedById set, this is a
    * rotation; without it, a logout or a security revocation. */
-  revoke(session: StoredSession, replacedById: string | null): void {
+  async revoke(session: StoredSession, replacedById: string | null): Promise<void> {
     session.revokedAt = new Date().toISOString();
     session.replacedById = replacedById;
-    this.sessions.save(session);
+    await this.sessions.save(session);
   }
 
   /** Revokes every still-active session in a family. Used when a
    * rotated token is reused, which means the token chain leaked. */
-  revokeFamily(familyId: string): void {
-    for (const session of this.sessions.listByFamily(familyId)) {
+  async revokeFamily(familyId: string): Promise<void> {
+    for (const session of await this.sessions.listByFamily(familyId)) {
       if (!session.revokedAt) {
         session.revokedAt = new Date().toISOString();
-        this.sessions.save(session);
+        await this.sessions.save(session);
       }
     }
   }

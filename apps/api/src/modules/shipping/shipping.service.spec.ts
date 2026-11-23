@@ -133,11 +133,11 @@ function configureSteadfast(): void {
   process.env.STEADFAST_SECRET_KEY = 'secret-key';
 }
 
-function placeOrder(
+async function placeOrder(
   ctx: TestContext,
   paymentMethod: 'cod' | 'bkash' = 'cod',
-): Order {
-  const { variant } = findVariant(ctx, 'sneakers-court', 'EU 41', 'White');
+): Promise<Order> {
+  const { variant } = await findVariant(ctx, 'sneakers-court', 'EU 41', 'White');
   return ctx.checkout.placeOrder({
     customer: {
       fullName: 'Shipment Buyer',
@@ -162,20 +162,20 @@ const FORWARD: OrderStatus[] = [
   'delivered',
 ];
 
-function walkOrderTo(
+async function walkOrderTo(
   ctx: TestContext,
   orderNumber: string,
   target: OrderStatus,
-): void {
+): Promise<void> {
   if (target === 'cancelled') {
-    ctx.ordersService.transition(orderNumber, { status: 'cancelled' }, actor);
+    await ctx.ordersService.transition(orderNumber, { status: 'cancelled' }, actor);
     return;
   }
   const start = FORWARD.indexOf(
-    ctx.ordersService.getByNumber(orderNumber).status,
+    (await ctx.ordersService.getByNumber(orderNumber)).status,
   );
   for (let i = start + 1; i <= FORWARD.indexOf(target); i++) {
-    ctx.ordersService.transition(
+    await ctx.ordersService.transition(
       orderNumber,
       { status: FORWARD[i] as OrderStatus },
       actor,
@@ -217,7 +217,7 @@ function steadfastHttp() {
 describe('shipment creation rules', () => {
   it('refuses a pending order, naming the state', async () => {
     const ctx = createTestContext();
-    const order = placeOrder(ctx);
+    const order = await placeOrder(ctx);
     await expect(
       ctx.shipping.createShipment(
         { orderNumber: order.orderNumber, courier: 'pathao' },
@@ -234,8 +234,8 @@ describe('shipment creation rules', () => {
 
   it('refuses a cancelled order', async () => {
     const ctx = createTestContext();
-    const order = placeOrder(ctx);
-    walkOrderTo(ctx, order.orderNumber, 'cancelled');
+    const order = await placeOrder(ctx);
+    await walkOrderTo(ctx, order.orderNumber, 'cancelled');
     await expect(
       ctx.shipping.createShipment(
         { orderNumber: order.orderNumber, courier: 'pathao' },
@@ -246,8 +246,8 @@ describe('shipment creation rules', () => {
 
   it('refuses a delivered order', async () => {
     const ctx = createTestContext();
-    const order = placeOrder(ctx);
-    walkOrderTo(ctx, order.orderNumber, 'delivered');
+    const order = await placeOrder(ctx);
+    await walkOrderTo(ctx, order.orderNumber, 'delivered');
     await expect(
       ctx.shipping.createShipment(
         { orderNumber: order.orderNumber, courier: 'pathao' },
@@ -270,8 +270,8 @@ describe('shipment creation rules', () => {
     configurePathao();
     const ctx = createTestContext();
     const shipping = shippingWithHttp(ctx, pathaoHttp({ deliveryStatus: 'pending' }));
-    const order = placeOrder(ctx);
-    walkOrderTo(ctx, order.orderNumber, 'confirmed');
+    const order = await placeOrder(ctx);
+    await walkOrderTo(ctx, order.orderNumber, 'confirmed');
     const first = await shipping.createShipment(
       { orderNumber: order.orderNumber, courier: 'pathao' },
       actor,
@@ -295,8 +295,8 @@ describe('not-configured honesty', () => {
       { courier: 'redx', missing: 'REDX_ACCESS_TOKEN' },
     ];
     for (const { courier, missing } of couriers) {
-      const order = placeOrder(ctx);
-      walkOrderTo(ctx, order.orderNumber, 'confirmed');
+      const order = await placeOrder(ctx);
+      await walkOrderTo(ctx, order.orderNumber, 'confirmed');
       const shipment = await ctx.shipping.createShipment(
         { orderNumber: order.orderNumber, courier },
         actor,
@@ -304,12 +304,12 @@ describe('not-configured honesty', () => {
       expect(shipment.status).toBe('not-configured');
       expect(shipment.trackingId).toBeNull();
       expect(shipment.notConfiguredReason).toContain(missing);
-      const detail = ctx.shipping.getDetail(shipment.id);
+      const detail = await ctx.shipping.getDetail(shipment.id);
       expect(detail.events).toHaveLength(1);
       expect(detail.events[0]?.source).toBe('create');
       expect(detail.events[0]?.status).toBe('not-configured');
     }
-    const listed = ctx.shipping.listShipments({ courier: 'redx' });
+    const listed = await ctx.shipping.listShipments({ courier: 'redx' });
     expect(listed).toHaveLength(1);
     expect(
       ctx.db.auditLogs.filter((entry) => entry.action === 'shipment.created'),
@@ -323,8 +323,8 @@ describe('configured booking through the Pathao double', () => {
     const ctx = createTestContext();
     const http = pathaoHttp({ deliveryStatus: 'pending' });
     const shipping = shippingWithHttp(ctx, http);
-    const order = placeOrder(ctx);
-    walkOrderTo(ctx, order.orderNumber, 'ready-to-ship');
+    const order = await placeOrder(ctx);
+    await walkOrderTo(ctx, order.orderNumber, 'ready-to-ship');
     const shipment = await shipping.createShipment(
       { orderNumber: order.orderNumber, courier: 'pathao' },
       actor,
@@ -349,8 +349,8 @@ describe('configured booking through the Pathao double', () => {
     configurePathao();
     const ctx = createTestContext();
     const shipping = shippingWithHttp(ctx, pathaoHttp({ deliveryStatus: 'pending' }));
-    const order = placeOrder(ctx, 'bkash');
-    walkOrderTo(ctx, order.orderNumber, 'confirmed');
+    const order = await placeOrder(ctx, 'bkash');
+    await walkOrderTo(ctx, order.orderNumber, 'confirmed');
     const shipment = await shipping.createShipment(
       { orderNumber: order.orderNumber, courier: 'pathao' },
       actor,
@@ -366,8 +366,8 @@ describe('status refresh', () => {
     const ctx = createTestContext();
     const state = { deliveryStatus: 'pending' };
     const shipping = shippingWithHttp(ctx, pathaoHttp(state));
-    const order = placeOrder(ctx);
-    walkOrderTo(ctx, order.orderNumber, 'confirmed');
+    const order = await placeOrder(ctx);
+    await walkOrderTo(ctx, order.orderNumber, 'confirmed');
     const shipment = await shipping.createShipment(
       { orderNumber: order.orderNumber, courier: 'pathao' },
       actor,
@@ -377,10 +377,10 @@ describe('status refresh', () => {
     expect(result.refreshed).toBe(true);
     expect(result.shipment.status).toBe('in-transit');
     expect(result.shipment.lastRawStatus).toBe('in_transit');
-    const after = ctx.ordersService.getByNumber(order.orderNumber);
+    const after = await ctx.ordersService.getByNumber(order.orderNumber);
     expect(after.status).toBe('shipped');
     // The order moved only along legal flow steps.
-    const events = ctx.ordersService.getDetail(order.orderNumber).events;
+    const events = (await ctx.ordersService.getDetail(order.orderNumber)).events;
     expect(events.map((event) => event.status)).toEqual([
       'pending',
       'confirmed',
@@ -389,7 +389,7 @@ describe('status refresh', () => {
       'ready-to-ship',
       'shipped',
     ]);
-    const shipmentEvents = ctx.shipping.getDetail(shipment.id).events;
+    const shipmentEvents = (await ctx.shipping.getDetail(shipment.id)).events;
     expect(shipmentEvents.map((event) => event.source)).toEqual([
       'create',
       'refresh',
@@ -401,8 +401,8 @@ describe('status refresh', () => {
     const ctx = createTestContext();
     const state = { deliveryStatus: 'pending' };
     const shipping = shippingWithHttp(ctx, pathaoHttp(state));
-    const order = placeOrder(ctx);
-    walkOrderTo(ctx, order.orderNumber, 'confirmed');
+    const order = await placeOrder(ctx);
+    await walkOrderTo(ctx, order.orderNumber, 'confirmed');
     const shipment = await shipping.createShipment(
       { orderNumber: order.orderNumber, courier: 'pathao' },
       actor,
@@ -412,13 +412,13 @@ describe('status refresh', () => {
     const again = await shipping.refreshStatus(shipment.id, actor);
     expect(again.refreshed).toBe(false);
     expect(again.refreshNote).toContain('unchanged');
-    expect(ctx.shipping.getDetail(shipment.id).events).toHaveLength(2);
+    expect((await ctx.shipping.getDetail(shipment.id)).events).toHaveLength(2);
   });
 
   it('cannot refresh a shipment the courier never booked', async () => {
     const ctx = createTestContext();
-    const order = placeOrder(ctx);
-    walkOrderTo(ctx, order.orderNumber, 'confirmed');
+    const order = await placeOrder(ctx);
+    await walkOrderTo(ctx, order.orderNumber, 'confirmed');
     const shipment = await ctx.shipping.createShipment(
       { orderNumber: order.orderNumber, courier: 'pathao' },
       actor,
@@ -427,7 +427,7 @@ describe('status refresh', () => {
     const result = await ctx.shipping.refreshStatus(shipment.id, actor);
     expect(result.refreshed).toBe(false);
     expect(result.refreshNote).toContain('no tracking id');
-    expect(ctx.shipping.getDetail(shipment.id).events).toHaveLength(1);
+    expect((await ctx.shipping.getDetail(shipment.id)).events).toHaveLength(1);
   });
 });
 
@@ -442,8 +442,8 @@ describe('courier webhooks', () => {
     configureSteadfast();
     process.env.STEADFAST_WEBHOOK_SECRET = SECRET;
     const shipping = shippingWithHttp(ctx, steadfastHttp());
-    const order = placeOrder(ctx);
-    walkOrderTo(ctx, order.orderNumber, 'confirmed');
+    const order = await placeOrder(ctx);
+    await walkOrderTo(ctx, order.orderNumber, 'confirmed');
     const shipment = await shipping.createShipment(
       { orderNumber: order.orderNumber, courier: 'steadfast' },
       actor,
@@ -454,14 +454,14 @@ describe('courier webhooks', () => {
 
   it('rejects deliveries when no webhook secret is configured', async () => {
     const ctx = createTestContext();
-    expect(() =>
+    await expect(
       ctx.shipping.handleCourierWebhook(
         'steadfast',
         { consignment_id: '9001', delivery_status: 'delivered' },
         'whatever',
         '{}',
       ),
-    ).toThrow(ServiceUnavailableException);
+    ).rejects.toThrow(ServiceUnavailableException);
   });
 
   it('rejects a bad signature and records nothing', async () => {
@@ -469,22 +469,22 @@ describe('courier webhooks', () => {
     process.env.STEADFAST_WEBHOOK_SECRET = SECRET;
     const payload = { consignment_id: '9001', delivery_status: 'delivered' };
     const rawBody = JSON.stringify(payload);
-    expect(() =>
+    await expect(
       ctx.shipping.handleCourierWebhook(
         'steadfast',
         payload,
         'deadbeef',
         rawBody,
       ),
-    ).toThrow(UnauthorizedException);
+    ).rejects.toThrow(UnauthorizedException);
     expect(ctx.db.courierWebhookEvents.size).toBe(0);
   });
 
-  it('answers 404 for a courier with no adapter', () => {
+  it('answers 404 for a courier with no adapter', async () => {
     const ctx = createTestContext();
-    expect(() =>
+    await expect(
       ctx.shipping.handleCourierWebhook('paperfly', {}, undefined, '{}'),
-    ).toThrow(NotFoundException);
+    ).rejects.toThrow(NotFoundException);
   });
 
   it('applies a delivered update, advances the order, and dedupes redelivery', async () => {
@@ -496,7 +496,7 @@ describe('courier webhooks', () => {
       event_id: 'evt-delivered-1',
     };
     const rawBody = JSON.stringify(payload);
-    const result = shipping.handleCourierWebhook(
+    const result = await shipping.handleCourierWebhook(
       'steadfast',
       payload,
       sign(rawBody, SECRET),
@@ -508,12 +508,12 @@ describe('courier webhooks', () => {
       applied: true,
       shipmentId: shipment.id,
     });
-    expect(ctx.shipping.getDetail(shipment.id).shipment.status).toBe(
+    expect((await ctx.shipping.getDetail(shipment.id)).shipment.status).toBe(
       'delivered',
     );
-    const after = ctx.ordersService.getByNumber(order.orderNumber);
+    const after = await ctx.ordersService.getByNumber(order.orderNumber);
     expect(after.status).toBe('delivered');
-    const orderEvents = ctx.ordersService.getDetail(order.orderNumber).events;
+    const orderEvents = (await ctx.ordersService.getDetail(order.orderNumber)).events;
     expect(orderEvents.map((event) => event.status)).toEqual([
       'pending',
       'confirmed',
@@ -524,11 +524,11 @@ describe('courier webhooks', () => {
       'out-for-delivery',
       'delivered',
     ]);
-    const shipmentEvents = ctx.shipping.getDetail(shipment.id).events;
+    const shipmentEvents = (await ctx.shipping.getDetail(shipment.id)).events;
     expect(shipmentEvents).toHaveLength(2);
     expect(shipmentEvents[1]?.source).toBe('webhook');
 
-    const duplicate = shipping.handleCourierWebhook(
+    const duplicate = await shipping.handleCourierWebhook(
       'steadfast',
       payload,
       sign(rawBody, SECRET),
@@ -536,7 +536,7 @@ describe('courier webhooks', () => {
     );
     expect(duplicate.duplicate).toBe(true);
     expect(duplicate.applied).toBe(false);
-    expect(ctx.shipping.getDetail(shipment.id).events).toHaveLength(2);
+    expect((await ctx.shipping.getDetail(shipment.id)).events).toHaveLength(2);
     expect(
       ctx.db.auditLogs.some(
         (entry) =>
@@ -555,7 +555,7 @@ describe('courier webhooks', () => {
       event_id: 'evt-unknown-1',
     };
     const rawBody = JSON.stringify(payload);
-    const result = ctx.shipping.handleCourierWebhook(
+    const result = await ctx.shipping.handleCourierWebhook(
       'steadfast',
       payload,
       sign(rawBody, SECRET),
@@ -564,7 +564,7 @@ describe('courier webhooks', () => {
     expect(result.applied).toBe(false);
     expect(result.shipmentId).toBeNull();
     expect(result.reason).toContain('No shipment matches');
-    const duplicate = ctx.shipping.handleCourierWebhook(
+    const duplicate = await ctx.shipping.handleCourierWebhook(
       'steadfast',
       payload,
       sign(rawBody, SECRET),
@@ -582,7 +582,7 @@ describe('courier webhooks', () => {
       event_id: 'evt-unknown-status',
     };
     const rawBody = JSON.stringify(payload);
-    const result = shipping.handleCourierWebhook(
+    const result = await shipping.handleCourierWebhook(
       'steadfast',
       payload,
       sign(rawBody, SECRET),
@@ -590,7 +590,7 @@ describe('courier webhooks', () => {
     );
     expect(result.applied).toBe(false);
     expect(result.reason).toContain('Unhandled courier status');
-    expect(ctx.shipping.getDetail(shipment.id).shipment.status).toBe(
+    expect((await ctx.shipping.getDetail(shipment.id)).shipment.status).toBe(
       'created',
     );
   });
@@ -604,7 +604,7 @@ describe('courier webhooks', () => {
       event_id: 'evt-d1',
     };
     const deliveredBody = JSON.stringify(deliveredPayload);
-    shipping.handleCourierWebhook(
+    await shipping.handleCourierWebhook(
       'steadfast',
       deliveredPayload,
       sign(deliveredBody, SECRET),
@@ -616,17 +616,17 @@ describe('courier webhooks', () => {
       event_id: 'evt-r1',
     };
     const returnedBody = JSON.stringify(returnedPayload);
-    const result = shipping.handleCourierWebhook(
+    const result = await shipping.handleCourierWebhook(
       'steadfast',
       returnedPayload,
       sign(returnedBody, SECRET),
       returnedBody,
     );
     expect(result.applied).toBe(true);
-    expect(ctx.shipping.getDetail(shipment.id).shipment.status).toBe(
+    expect((await ctx.shipping.getDetail(shipment.id)).shipment.status).toBe(
       'returned',
     );
-    expect(ctx.ordersService.getByNumber(order.orderNumber).status).toBe(
+    expect((await ctx.ordersService.getByNumber(order.orderNumber)).status).toBe(
       'returned',
     );
   });
@@ -640,19 +640,19 @@ describe('courier webhooks', () => {
       event_id: 'evt-early-return',
     };
     const rawBody = JSON.stringify(payload);
-    const result = shipping.handleCourierWebhook(
+    const result = await shipping.handleCourierWebhook(
       'steadfast',
       payload,
       sign(rawBody, SECRET),
       rawBody,
     );
     expect(result.applied).toBe(true);
-    expect(ctx.shipping.getDetail(shipment.id).shipment.status).toBe(
+    expect((await ctx.shipping.getDetail(shipment.id)).shipment.status).toBe(
       'returned',
     );
     // The order was only confirmed: it must not pass through
     // delivered (which would collect COD) on its way anywhere.
-    expect(ctx.ordersService.getByNumber(order.orderNumber).status).toBe(
+    expect((await ctx.ordersService.getByNumber(order.orderNumber)).status).toBe(
       'confirmed',
     );
   });

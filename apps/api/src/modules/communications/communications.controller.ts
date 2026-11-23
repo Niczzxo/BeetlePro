@@ -41,7 +41,7 @@ export class CommunicationsController {
 
   @Get('log')
   @RequirePermission('communications.read')
-  listLog(
+  async listLog(
     @Query('channel') channel?: string,
     @Query('status') status?: string,
     @Query('customerId') customerId?: string,
@@ -59,7 +59,7 @@ export class CommunicationsController {
       ? (status as CommunicationLogStatus)
       : undefined;
     return {
-      items: this.communications.listLog({
+      items: await this.communications.listLog({
         channel: parsedChannel,
         status: parsedStatus,
         customerId: customerId || undefined,
@@ -71,7 +71,7 @@ export class CommunicationsController {
 
   @Post('calls')
   @RequirePermission('recovery.edit')
-  logCall(
+  async logCall(
     @Body() body: unknown,
     @CurrentUser() user: AuthPrincipal,
   ) {

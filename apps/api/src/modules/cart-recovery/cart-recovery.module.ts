@@ -12,6 +12,7 @@ import { CartRecoveryService } from './cart-recovery.service';
 import { RecoveryController } from './recovery.controller';
 import { CartRecoveryRepository } from './repositories/cart-recovery.repository';
 import { InMemoryCartRecoveryRepository } from './repositories/in-memory-cart-recovery.repository';
+import { PrismaCartRecoveryRepository } from './repositories/prisma-cart-recovery.repository';
 
 /**
  * Cart recovery module (Phase 6): detection, the step sequence
@@ -35,7 +36,9 @@ import { InMemoryCartRecoveryRepository } from './repositories/in-memory-cart-re
     RateLimitGuard,
     {
       provide: CartRecoveryRepository,
-      useClass: InMemoryCartRecoveryRepository,
+      useClass: process.env.DATABASE_URL
+        ? PrismaCartRecoveryRepository
+        : InMemoryCartRecoveryRepository,
     },
   ],
   exports: [CartRecoveryService, CartRecoveryRepository],

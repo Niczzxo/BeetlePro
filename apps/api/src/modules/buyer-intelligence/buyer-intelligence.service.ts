@@ -44,10 +44,10 @@ export interface BuyerSessionDetail extends BuyerSessionSummary {
 export class BuyerIntelligenceService {
   constructor(private readonly visitors: VisitorsService) {}
 
-  private summarize(
+  private async summarize(
     session: VisitorSession,
     events: StoredVisitorEvent[],
-  ): BuyerSessionSummary {
+  ): Promise<BuyerSessionSummary> {
     const eventCounts: Partial<Record<VisitorEventType, number>> = {};
     let maxCartValueMinor = 0;
     let latestCartValueMinor = 0;
@@ -59,8 +59,9 @@ export class BuyerIntelligenceService {
         if (cartValue > maxCartValueMinor) maxCartValueMinor = cartValue;
       }
     }
-    const visitorSessionCount =
-      this.visitors.listSessionsForVisitor(session.visitorId).length;
+    const visitorSessionCount = (await this.visitors.listSessionsForVisitor(
+      session.visitorId,
+    )).length;
     const lead = computeLeadScore({
       lastActivityAt: session.lastSeenAt,
       eventCounts,
@@ -80,26 +81,29 @@ export class BuyerIntelligenceService {
       cartValueMinor: latestCartValueMinor,
       leadScore: lead.score,
       leadBand: lead.band,
-      marketingUsable: this.visitors.marketingUsable(session.visitorId),
+      marketingUsable: await this.visitors.marketingUsable(session.visitorId),
     };
   }
 
   /** Facts for one session, for the leads module's candidate
    * evaluation: the same summary staff see, nothing more. */
-  summarizeSession(session: VisitorSession): BuyerSessionSummary {
+  async summarizeSession(session: VisitorSession): Promise<BuyerSessionSummary> {
     return this.summarize(
       session,
-      this.visitors.listEventsForSession(session.id),
+      await this.visitors.listEventsForSession(session.id),
     );
   }
 
-  listSessions(filter: {
+  async listSessions(filter: {
     status?: IdentityStatus;
     minScore?: number;
-  }): BuyerSessionSummary[] {
-    return this.visitors
-      .listSessions()
-      .map((session) => this.summarizeSession(session))
+  }): Promise<BuyerSessionSummary[]> {
+    const summaries = await Promise.all(
+      (await this.visitors.listSessions()).map((session) =>
+        this.summarizeSession(session),
+      ),
+    );
+    return summaries
       .filter((summary) => {
         if (filter.status && summary.identityStatus !== filter.status) {
           return false;
@@ -115,15 +119,15 @@ export class BuyerIntelligenceService {
       .sort((a, b) => b.lastSeenAt.localeCompare(a.lastSeenAt));
   }
 
-  getSession(sessionId: string): BuyerSessionDetail {
-    const session = this.visitors.getSession(sessionId);
+  async getSession(sessionId: string): Promise<BuyerSessionDetail> {
+    const session = await this.visitors.getSession(sessionId);
     if (!session) {
       throw new NotFoundException(`Visitor session not found: ${sessionId}`);
     }
-    const events = this.visitors
-      .listEventsForSession(sessionId)
-      .sort((a, b) => a.occurredAt.localeCompare(b.occurredAt));
-    const summary = this.summarize(session, events);
+    const events = (await this.visitors.listEventsForSession(sessionId)).sort(
+      (a, b) => a.occurredAt.localeCompare(b.occurredAt),
+    );
+    const summary = await this.summarize(session, events);
     const lead = computeLeadScore({
       lastActivityAt: session.lastSeenAt,
       eventCounts: summary.eventCounts,
@@ -131,9 +135,9 @@ export class BuyerIntelligenceService {
         const value = event.payload?.['cartValueMinor'];
         return typeof value === 'number' && value > max ? value : max;
       }, 0),
-      visitorSessionCount: this.visitors.listSessionsForVisitor(
+      visitorSessionCount: (await this.visitors.listSessionsForVisitor(
         session.visitorId,
-      ).length,
+      )).length,
     });
     return { ...summary, scoreBreakdown: lead.breakdown, events };
   }

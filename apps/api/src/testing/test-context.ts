@@ -26,6 +26,7 @@ import { InMemorySessionsRepository } from '../modules/auth/repositories/in-memo
 import { SeedService } from '../seed/seed.service';
 import { InMemoryDatabase } from '../store/in-memory.store';
 import { OrderEventBus } from '../store/order-event-bus';
+import { InMemorySettingsRepository } from '../store/in-memory-settings.repository';
 import { VisitorsService } from '../modules/visitors/visitors.service';
 import { InMemoryVisitorsRepository } from '../modules/visitors/repositories/in-memory-visitors.repository';
 import { BuyerIntelligenceService } from '../modules/buyer-intelligence/buyer-intelligence.service';
@@ -94,7 +95,8 @@ export interface TestContext {
 
 export function createTestContext(): TestContext {
   const db = new InMemoryDatabase();
-  new SeedService(db).onModuleInit();
+  void new SeedService(db).onModuleInit();
+  const settings = new InMemorySettingsRepository(db);
   const bus = new OrderEventBus();
 
   const catalog = new InMemoryCatalogRepository(db);
@@ -117,7 +119,7 @@ export function createTestContext(): TestContext {
   );
   const registry = new PaymentProviderRegistry(
     new CodPaymentProvider(),
-    new ManualMobileBankingProvider(db),
+    new ManualMobileBankingProvider(settings),
     new SslcommerzProvider(),
     new BkashGatewayProvider(),
   );
@@ -145,7 +147,7 @@ export function createTestContext(): TestContext {
     orders,
     audit,
   );
-  leads.onModuleInit();
+  void leads.onModuleInit();
   const crm = new CrmService(
     new InMemoryCrmRepository(db),
     customers,
@@ -187,7 +189,7 @@ export function createTestContext(): TestContext {
     customers,
     orders,
     inventory,
-    db,
+    settings,
     payments,
     visitors,
     leads,
@@ -248,13 +250,13 @@ export function createTestContext(): TestContext {
 
 /** A seeded variant lookup for tests: first variant of a product
  * matching a size (and colour, when given). */
-export function findVariant(
+export async function findVariant(
   ctx: TestContext,
   productId: string,
   size: string,
   colour?: string,
 ) {
-  const product = ctx.catalog.findByIdOrSlug(productId);
+  const product = await ctx.catalog.findByIdOrSlug(productId);
   if (!product) throw new Error(`seed product missing: ${productId}`);
   const variant = product.variants.find(
     (v) => v.size === size && (!colour || v.colour === colour),

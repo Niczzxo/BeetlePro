@@ -53,13 +53,13 @@ export class CrmService {
     private readonly audit: AuditService,
   ) {}
 
-  getTimeline(customerId: string): CustomerTimeline {
-    const customer = this.customers.getProfile(customerId);
-    const orders = this.orders
-      .listByCustomer(customerId)
-      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-    const sessions = this.visitors.listSessionsForCustomer(customerId);
-    const events = this.visitors.listEventsForCustomer(customerId);
+  async getTimeline(customerId: string): Promise<CustomerTimeline> {
+    const customer = await this.customers.getProfile(customerId);
+    const orders = (await this.orders.listByCustomer(customerId)).sort(
+      (a, b) => b.createdAt.localeCompare(a.createdAt),
+    );
+    const sessions = await this.visitors.listSessionsForCustomer(customerId);
+    const events = await this.visitors.listEventsForCustomer(customerId);
 
     const eventCounts: Partial<Record<VisitorEventType, number>> = {};
     let maxCartValueMinor = 0;
@@ -77,22 +77,20 @@ export class CrmService {
             .sort()
             .at(-1) ?? null
         : null;
+    const sessionScores = await Promise.all(
+      sessions.map(async (session) =>
+        computeLeadScore({
+          lastActivityAt: session.lastSeenAt,
+          eventCounts: await this.countsForSession(session.id),
+          maxCartValueMinor,
+          visitorSessionCount: (await this.visitors.listSessionsForVisitor(
+            session.visitorId,
+          )).length,
+        }).score,
+      ),
+    );
     const bestLeadScore =
-      sessions.length > 0
-        ? Math.max(
-            ...sessions.map(
-              (session) =>
-                computeLeadScore({
-                  lastActivityAt: session.lastSeenAt,
-                  eventCounts: this.countsForSession(session.id),
-                  maxCartValueMinor,
-                  visitorSessionCount: this.visitors.listSessionsForVisitor(
-                    session.visitorId,
-                  ).length,
-                }).score,
-            ),
-          )
-        : 0;
+      sessionScores.length > 0 ? Math.max(...sessionScores) : 0;
 
     return {
       customer,
@@ -107,27 +105,27 @@ export class CrmService {
         lastActivityAt,
         bestLeadScore,
       },
-      notes: this.crm.listNotes(customerId),
+      notes: await this.crm.listNotes(customerId),
       tags: customer.tags,
     };
   }
 
-  private countsForSession(
+  private async countsForSession(
     sessionId: string,
-  ): Partial<Record<VisitorEventType, number>> {
+  ): Promise<Partial<Record<VisitorEventType, number>>> {
     const counts: Partial<Record<VisitorEventType, number>> = {};
-    for (const event of this.visitors.listEventsForSession(sessionId)) {
+    for (const event of await this.visitors.listEventsForSession(sessionId)) {
       counts[event.type] = (counts[event.type] ?? 0) + 1;
     }
     return counts;
   }
 
-  addNote(
+  async addNote(
     customerId: string,
     body: string,
     actor: AuthPrincipal,
-  ): CustomerNote {
-    this.customers.findStored(customerId);
+  ): Promise<CustomerNote> {
+    await this.customers.findStored(customerId);
     const note: CustomerNote = {
       id: randomUUID(),
       customerId,
@@ -135,8 +133,8 @@ export class CrmService {
       authorId: actor.id,
       createdAt: new Date().toISOString(),
     };
-    this.crm.appendNote(note);
-    this.audit.recordForPrincipal(actor, {
+    await this.crm.appendNote(note);
+    await this.audit.recordForPrincipal(actor, {
       action: 'customer.note-added',
       entityType: 'customer',
       entityId: customerId,
@@ -145,15 +143,15 @@ export class CrmService {
     return note;
   }
 
-  addTag(customerId: string, tag: string, actor: AuthPrincipal): string[] {
-    const customer = this.customers.findStored(customerId);
+  async addTag(customerId: string, tag: string, actor: AuthPrincipal): Promise<string[]> {
+    const customer = await this.customers.findStored(customerId);
     const normalized = tag.trim();
     if (!normalized) throw new BadRequestException('Tag is empty');
     if (!customer.tags.includes(normalized)) {
       customer.tags = [...customer.tags, normalized];
       customer.updatedAt = new Date().toISOString();
-      this.customersRepo.save(customer);
-      this.audit.recordForPrincipal(actor, {
+      await this.customersRepo.save(customer);
+      await this.audit.recordForPrincipal(actor, {
         action: 'customer.tag-added',
         entityType: 'customer',
         entityId: customerId,
@@ -163,12 +161,12 @@ export class CrmService {
     return customer.tags;
   }
 
-  removeTag(
+  async removeTag(
     customerId: string,
     tag: string,
     actor: AuthPrincipal,
-  ): string[] {
-    const customer = this.customers.findStored(customerId);
+  ): Promise<string[]> {
+    const customer = await this.customers.findStored(customerId);
     if (!customer.tags.includes(tag)) {
       throw new NotFoundException(
         `Tag not present on customer: ${tag}`,
@@ -176,8 +174,8 @@ export class CrmService {
     }
     customer.tags = customer.tags.filter((item) => item !== tag);
     customer.updatedAt = new Date().toISOString();
-    this.customersRepo.save(customer);
-    this.audit.recordForPrincipal(actor, {
+    await this.customersRepo.save(customer);
+    await this.audit.recordForPrincipal(actor, {
       action: 'customer.tag-removed',
       entityType: 'customer',
       entityId: customerId,

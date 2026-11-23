@@ -12,20 +12,20 @@ export class InMemoryOrdersRepository extends OrdersRepository {
     super();
   }
 
-  create(order: Order): Order {
+  async create(order: Order): Promise<Order> {
     this.db.orders.set(order.id, order);
     return order;
   }
 
-  save(order: Order): void {
+  async save(order: Order): Promise<void> {
     this.db.orders.set(order.id, order);
   }
 
-  findById(id: string): Order | null {
+  async findById(id: string): Promise<Order | null> {
     return this.db.orders.get(id) ?? null;
   }
 
-  findByNumber(orderNumber: string): Order | null {
+  async findByNumber(orderNumber: string): Promise<Order | null> {
     return (
       [...this.db.orders.values()].find(
         (order) => order.orderNumber === orderNumber,
@@ -33,29 +33,29 @@ export class InMemoryOrdersRepository extends OrdersRepository {
     );
   }
 
-  listByCustomer(customerId: string): Order[] {
+  async listByCustomer(customerId: string): Promise<Order[]> {
     return [...this.db.orders.values()]
       .filter((order) => order.customerId === customerId)
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   }
 
-  listAll(): Order[] {
+  async listAll(): Promise<Order[]> {
     return [...this.db.orders.values()].sort((a, b) =>
       b.createdAt.localeCompare(a.createdAt),
     );
   }
 
-  countByCustomer(customerId: string): number {
+  async countByCustomer(customerId: string): Promise<number> {
     return [...this.db.orders.values()].filter(
       (order) => order.customerId === customerId,
     ).length;
   }
 
-  addStatusEvent(event: OrderStatusEventRecord): void {
+  async addStatusEvent(event: OrderStatusEventRecord): Promise<void> {
     this.db.orderEvents.push(event);
   }
 
-  listStatusEvents(orderId: string): OrderStatusEventRecord[] {
+  async listStatusEvents(orderId: string): Promise<OrderStatusEventRecord[]> {
     return this.db.orderEvents.filter((event) => event.orderId === orderId);
   }
 }

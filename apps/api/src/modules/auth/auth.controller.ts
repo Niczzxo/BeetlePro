@@ -46,7 +46,7 @@ export class AuthController {
    * flow plus an immediate token pair, so a new customer is
    * signed in at once. */
   @Post('register')
-  register(@Body() body: unknown) {
+  async register(@Body() body: unknown) {
     const dto: CustomerRegistration = parseBody(
       customerRegistrationSchema,
       body,
@@ -57,19 +57,19 @@ export class AuthController {
   @Post('login')
   @UseGuards(RateLimitGuard)
   @RateLimit(LOGIN_RATE_LIMIT)
-  login(@Body() body: unknown, @ClientIp() ip: string | null) {
+  async login(@Body() body: unknown, @ClientIp() ip: string | null) {
     const dto: CustomerLogin = parseBody(customerLoginSchema, body);
     return this.auth.loginCustomer(dto, ip);
   }
 
   @Post('refresh')
-  refresh(@Body() body: unknown) {
+  async refresh(@Body() body: unknown) {
     const dto: RefreshTokenRequest = parseBody(refreshTokenSchema, body);
     return this.auth.refresh(dto.refreshToken);
   }
 
   @Post('logout')
-  logout(@Body() body: unknown) {
+  async logout(@Body() body: unknown) {
     const dto: LogoutRequest = parseBody(logoutSchema, body);
     return this.auth.logout(dto.refreshToken);
   }
@@ -77,7 +77,7 @@ export class AuthController {
   @Post('admin/login')
   @UseGuards(RateLimitGuard)
   @RateLimit(LOGIN_RATE_LIMIT)
-  adminLogin(@Body() body: unknown, @ClientIp() ip: string | null) {
+  async adminLogin(@Body() body: unknown, @ClientIp() ip: string | null) {
     const dto: AdminLogin = parseBody(adminLoginSchema, body);
     return this.auth.loginAdmin(dto, ip);
   }
@@ -85,14 +85,14 @@ export class AuthController {
   @Post('admin/mfa/exchange')
   @UseGuards(RateLimitGuard)
   @RateLimit(LOGIN_RATE_LIMIT)
-  mfaExchange(@Body() body: unknown, @ClientIp() ip: string | null) {
+  async mfaExchange(@Body() body: unknown, @ClientIp() ip: string | null) {
     const dto: MfaExchange = parseBody(mfaExchangeSchema, body);
     return this.auth.exchangeMfaChallenge(dto.challengeId, dto.code, ip);
   }
 
   @Post('admin/mfa/enroll')
   @UseGuards(AuthGuard)
-  enrollMfa(
+  async enrollMfa(
     @CurrentUser() user: AuthPrincipal | null,
     @ClientIp() ip: string | null,
   ) {
@@ -101,7 +101,7 @@ export class AuthController {
 
   @Post('admin/mfa/enable')
   @UseGuards(AuthGuard)
-  enableMfa(
+  async enableMfa(
     @Body() body: unknown,
     @CurrentUser() user: AuthPrincipal | null,
     @ClientIp() ip: string | null,
@@ -112,7 +112,7 @@ export class AuthController {
 
   @Post('admin/mfa/disable')
   @UseGuards(AuthGuard)
-  disableMfa(
+  async disableMfa(
     @Body() body: unknown,
     @CurrentUser() user: AuthPrincipal | null,
     @ClientIp() ip: string | null,

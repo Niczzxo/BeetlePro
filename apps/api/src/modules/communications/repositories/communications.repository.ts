@@ -3,6 +3,7 @@ import type {
   CommunicationLog,
   CommunicationLogStatus,
 } from '@dostelo/types';
+import type { Tx } from '../../../prisma/prisma.service';
 
 export interface CommunicationLogFilter {
   channel?: CommunicationChannel;
@@ -19,6 +20,12 @@ export interface CommunicationLogFilter {
  * staff-logged call, and entries are never edited afterwards.
  */
 export abstract class CommunicationsRepository {
-  abstract append(entry: CommunicationLog): CommunicationLog;
-  abstract list(filter: CommunicationLogFilter): CommunicationLog[];
+  abstract append(
+    entry: CommunicationLog,
+    tx?: Tx,
+  ): Promise<CommunicationLog>;
+  abstract list(
+    filter: CommunicationLogFilter,
+    tx?: Tx,
+  ): Promise<CommunicationLog[]>;
 }

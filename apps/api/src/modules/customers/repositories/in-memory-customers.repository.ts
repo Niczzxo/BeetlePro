@@ -11,20 +11,20 @@ export class InMemoryCustomersRepository extends CustomersRepository {
     super();
   }
 
-  create(customer: StoredCustomer): StoredCustomer {
+  async create(customer: StoredCustomer): Promise<StoredCustomer> {
     this.db.customers.set(customer.id, customer);
     return customer;
   }
 
-  save(customer: StoredCustomer): void {
+  async save(customer: StoredCustomer): Promise<void> {
     this.db.customers.set(customer.id, customer);
   }
 
-  findById(id: string): StoredCustomer | null {
+  async findById(id: string): Promise<StoredCustomer | null> {
     return this.db.customers.get(id) ?? null;
   }
 
-  findByEmail(email: string): StoredCustomer | null {
+  async findByEmail(email: string): Promise<StoredCustomer | null> {
     const needle = email.toLowerCase();
     return (
       [...this.db.customers.values()].find(
@@ -33,11 +33,11 @@ export class InMemoryCustomersRepository extends CustomersRepository {
     );
   }
 
-  list(): StoredCustomer[] {
+  async list(): Promise<StoredCustomer[]> {
     return [...this.db.customers.values()];
   }
 
-  findByPhone(phone: string): StoredCustomer | null {
+  async findByPhone(phone: string): Promise<StoredCustomer | null> {
     return (
       [...this.db.customers.values()].find(
         (customer) => customer.phone === phone,

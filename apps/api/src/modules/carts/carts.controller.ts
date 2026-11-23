@@ -23,24 +23,24 @@ export class CartsController {
   constructor(private readonly carts: CartsService) {}
 
   @Post()
-  create(@Body() body: unknown) {
+  async create(@Body() body: unknown) {
     const dto: CartCreate = parseBody(cartCreateSchema, body ?? {});
     return this.carts.createCart(dto);
   }
 
   @Get(':id')
-  get(@Param('id') id: string) {
+  async get(@Param('id') id: string) {
     return this.carts.getCart(id);
   }
 
   @Post(':id/lines')
-  addLine(@Param('id') id: string, @Body() body: unknown) {
+  async addLine(@Param('id') id: string, @Body() body: unknown) {
     const dto: CartLineCreate = parseBody(cartLineCreateSchema, body);
     return this.carts.addLine(id, dto);
   }
 
   @Patch(':id/lines/:lineId')
-  updateLine(
+  async updateLine(
     @Param('id') id: string,
     @Param('lineId') lineId: string,
     @Body() body: unknown,
@@ -50,7 +50,7 @@ export class CartsController {
   }
 
   @Delete(':id/lines/:lineId')
-  removeLine(@Param('id') id: string, @Param('lineId') lineId: string) {
+  async removeLine(@Param('id') id: string, @Param('lineId') lineId: string) {
     return this.carts.removeLine(id, lineId);
   }
 }

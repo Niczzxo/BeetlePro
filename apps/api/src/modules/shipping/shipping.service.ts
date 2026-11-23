@@ -144,17 +144,15 @@ export class ShippingService {
     dto: CreateShipment,
     actor: AuthPrincipal | null,
   ): Promise<Shipment> {
-    const order = this.orders.getByNumber(dto.orderNumber);
+    const order = await this.orders.getByNumber(dto.orderNumber);
     if (!SHIPPABLE_ORDER_STATUSES.includes(order.status)) {
       throw new BadRequestException(
         `Order ${order.orderNumber} cannot be shipped from status ${order.status}; shipments are booked for confirmed, processing, packed or ready-to-ship orders.`,
       );
     }
-    const active = this.shipping
-      .listByOrder(order.id)
-      .find((shipment) =>
-        ACTIVE_SHIPMENT_STATUSES.includes(shipment.status),
-      );
+    const active = (await this.shipping.listByOrder(order.id)).find(
+      (shipment) => ACTIVE_SHIPMENT_STATUSES.includes(shipment.status),
+    );
     if (active) {
       throw new ConflictException(
         `Order ${order.orderNumber} already has a ${active.status} shipment with ${active.courier} (${active.id}); a second active booking is refused.`,
@@ -179,7 +177,7 @@ export class ShippingService {
       ]
         .filter(Boolean)
         .join(', '),
-      codAmount: money(this.codAmountMinorFor(order)),
+      codAmount: money(await this.codAmountMinorFor(order)),
       weightKg: dto.weightKg ?? DEFAULT_WEIGHT_KG,
       notConfiguredReason: null,
       lastRawStatus: null,
@@ -212,8 +210,8 @@ export class ShippingService {
       shipment.status = 'failed';
     }
     shipment.lastRawStatus = result.rawStatus;
-    this.shipping.create(shipment);
-    this.shipping.addEvent({
+    await this.shipping.create(shipment);
+    await this.shipping.addEvent({
       id: randomUUID(),
       shipmentId: shipment.id,
       status: shipment.status,
@@ -222,7 +220,7 @@ export class ShippingService {
       note: result.detail,
       createdAt: now,
     });
-    this.recordAudit(actor, 'shipment.created', shipment, {
+    await this.recordAudit(actor, 'shipment.created', shipment, {
       orderNumber: order.orderNumber,
       courier: shipment.courier,
       status: shipment.status,
@@ -231,13 +229,13 @@ export class ShippingService {
     return shipment;
   }
 
-  listShipments(filter: ShipmentListFilter): Shipment[] {
+  async listShipments(filter: ShipmentListFilter): Promise<Shipment[]> {
     return this.shipping.list(filter);
   }
 
-  getDetail(id: string): ShipmentDetail {
-    const shipment = this.getShipment(id);
-    return { shipment, events: this.shipping.listEvents(id) };
+  async getDetail(id: string): Promise<ShipmentDetail> {
+    const shipment = await this.getShipment(id);
+    return { shipment, events: await this.shipping.listEvents(id) };
   }
 
   /**
@@ -251,16 +249,16 @@ export class ShippingService {
     id: string,
     actor: AuthPrincipal | null,
   ): Promise<RefreshResult> {
-    const shipment = this.getShipment(id);
-    const detail = (): RefreshResult => ({
-      shipment: this.getShipment(id),
-      events: this.shipping.listEvents(id),
+    const shipment = await this.getShipment(id);
+    const detail = async (): Promise<RefreshResult> => ({
+      shipment: await this.getShipment(id),
+      events: await this.shipping.listEvents(id),
       refreshed: false,
       refreshNote: null,
     });
     if (!shipment.trackingId) {
       return {
-        ...detail(),
+        ...(await detail()),
         refreshNote:
           'This shipment has no tracking id: the courier never confirmed a booking, so there is no status to refresh.',
       };
@@ -269,7 +267,7 @@ export class ShippingService {
     const result = await provider.fetchStatus(shipment.trackingId);
     if (result.outcome !== 'ok') {
       return {
-        ...detail(),
+        ...(await detail()),
         refreshNote:
           result.detail ??
           'The courier could not provide a status right now.',
@@ -277,18 +275,18 @@ export class ShippingService {
     }
     if (!result.canonical) {
       return {
-        ...detail(),
+        ...(await detail()),
         refreshNote: `The courier reported a status this system does not map: ${result.rawStatus ?? 'unknown'}. It was not applied.`,
       };
     }
-    const applied = this.applyStatus(
+    const applied = await this.applyStatus(
       shipment,
       result.canonical,
       result.rawStatus,
       'refresh',
       actor,
     );
-    const after = detail();
+    const after = await detail();
     return {
       ...after,
       refreshed: applied,
@@ -316,12 +314,12 @@ export class ShippingService {
    * 5. A first, verified delivery applies its mapped status to
    *    the shipment (and, through the legal flow, to the order).
    */
-  handleCourierWebhook(
+  async handleCourierWebhook(
     courierParam: string,
     payload: Record<string, unknown>,
     signature: string | undefined,
     rawBody: string | undefined,
-  ): CourierWebhookResult {
+  ): Promise<CourierWebhookResult> {
     if (!COURIERS.includes(courierParam as Courier)) {
       throw new NotFoundException(
         `No courier webhook endpoint for courier: ${courierParam}`,
@@ -354,9 +352,9 @@ export class ShippingService {
       firstString(payload, ['event_id', 'delivery_id', 'webhook_id', 'id']) ??
       createHash('sha256').update(body).digest('hex');
     const shipment = trackingId
-      ? this.shipping.findByTrackingId(courier, trackingId)
+      ? await this.shipping.findByTrackingId(courier, trackingId)
       : null;
-    const { record, duplicate } = this.shipping.recordWebhookDelivery({
+    const { record, duplicate } = await this.shipping.recordWebhookDelivery({
       id: randomUUID(),
       courier,
       providerEventId,
@@ -401,7 +399,7 @@ export class ShippingService {
         reason: `Unhandled courier status: ${rawStatus}`,
       };
     }
-    const applied = this.applyStatus(
+    const applied = await this.applyStatus(
       shipment,
       canonical,
       rawStatus,
@@ -424,13 +422,13 @@ export class ShippingService {
    * repeated poll or a duplicate report), so nothing is recorded
    * twice for the same fact.
    */
-  private applyStatus(
+  private async applyStatus(
     shipment: Shipment,
     canonical: ShipmentStatus,
     rawStatus: string | null,
     source: 'refresh' | 'webhook',
     actor: AuthPrincipal | null,
-  ): boolean {
+  ): Promise<boolean> {
     if (
       canonical === shipment.status &&
       rawStatus === shipment.lastRawStatus
@@ -441,8 +439,8 @@ export class ShippingService {
     shipment.status = canonical;
     shipment.lastRawStatus = rawStatus ?? shipment.lastRawStatus;
     shipment.updatedAt = new Date().toISOString();
-    this.shipping.save(shipment);
-    this.shipping.addEvent({
+    await this.shipping.save(shipment);
+    await this.shipping.addEvent({
       id: randomUUID(),
       shipmentId: shipment.id,
       status: canonical,
@@ -451,8 +449,8 @@ export class ShippingService {
       note: null,
       createdAt: shipment.updatedAt,
     });
-    const advancedTo = this.advanceOrder(shipment, canonical, actor);
-    this.recordAudit(actor, 'shipment.status-updated', shipment, {
+    const advancedTo = await this.advanceOrder(shipment, canonical, actor);
+    await this.recordAudit(actor, 'shipment.status-updated', shipment, {
       orderNumber: shipment.orderNumber,
       courier: shipment.courier,
       from: previousStatus,
@@ -474,11 +472,11 @@ export class ShippingService {
    * which would wrongly collect COD). Returns the order status
    * reached, or null when no move applied.
    */
-  private advanceOrder(
+  private async advanceOrder(
     shipment: Shipment,
     canonical: ShipmentStatus,
     actor: AuthPrincipal | null,
-  ): OrderStatus | null {
+  ): Promise<OrderStatus | null> {
     const target: OrderStatus | null =
       canonical === 'picked-up' || canonical === 'in-transit'
         ? 'shipped'
@@ -490,7 +488,7 @@ export class ShippingService {
     if (!target) return null;
     let order: Order;
     try {
-      order = this.orders.getByNumber(shipment.orderNumber);
+      order = await this.orders.getByNumber(shipment.orderNumber);
     } catch {
       return null;
     }
@@ -500,7 +498,7 @@ export class ShippingService {
     const path = flowPath(order.status, target);
     if (!path || path.length === 0) return null;
     for (const step of path) {
-      this.orders.transition(
+      await this.orders.transition(
         shipment.orderNumber,
         {
           status: step,
@@ -516,8 +514,8 @@ export class ShippingService {
   /** COD cash to collect: the order total when the order carries
    * a COD payment that has not been collected or settled, else
    * zero (a prepaid order collects nothing at the door). */
-  private codAmountMinorFor(order: Order): number {
-    const attempts = this.payments.listByOrder(order.id);
+  private async codAmountMinorFor(order: Order): Promise<number> {
+    const attempts = await this.payments.listByOrder(order.id);
     const hasCod = attempts.some(
       (payment) => payment.gateway === 'cod',
     );
@@ -532,8 +530,8 @@ export class ShippingService {
     return order.total.amountMinor;
   }
 
-  private getShipment(id: string): Shipment {
-    const shipment = this.shipping.findById(id);
+  private async getShipment(id: string): Promise<Shipment> {
+    const shipment = await this.shipping.findById(id);
     if (!shipment) {
       throw new NotFoundException(`Shipment not found: ${id}`);
     }
@@ -562,22 +560,22 @@ export class ShippingService {
     }
   }
 
-  private recordAudit(
+  private async recordAudit(
     actor: AuthPrincipal | null,
     action: string,
     shipment: Shipment,
     metadata: Record<string, unknown>,
-  ): void {
+  ): Promise<void> {
     if (!this.audit) return;
     if (actor) {
-      this.audit.recordForPrincipal(actor, {
+      await this.audit.recordForPrincipal(actor, {
         action,
         entityType: 'shipment',
         entityId: shipment.id,
         metadata,
       });
     } else {
-      this.audit.record({
+      await this.audit.record({
         actorType: 'system',
         actorId: null,
         action,

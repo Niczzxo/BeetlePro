@@ -60,12 +60,14 @@ export interface ProviderRefundResult {
 }
 
 /**
- * One payment channel adapter. Synchronous adapters (COD, manual
- * mobile banking) settle their initiation inline; hosted gateway
- * adapters create a session over HTTP and are therefore async.
- * Checkout only ever calls the synchronous begin step (see
- * PaymentsService.beginAttempt); the gateway session itself is
- * created through initiateGatewaySession once an order exists.
+ * One payment channel adapter. COD settles its initiation
+ * inline and synchronously; the manual mobile-banking adapter
+ * reads the store settings and is therefore async; hosted
+ * gateway adapters create a session over HTTP and are async.
+ * Checkout only ever calls the begin step (see
+ * PaymentsService.beginAttempt), which accepts either shape;
+ * the gateway session itself is created through
+ * initiateSession once an order exists.
  */
 export abstract class PaymentProvider {
   abstract readonly channel: PaymentChannel;
@@ -73,11 +75,13 @@ export abstract class PaymentProvider {
   /** Whether this adapter can run right now. COD and manual
    * adapters always can; gateway adapters need credentials. */
   abstract isConfigured(): boolean;
-  /** The synchronous part of initiation: moves the attempt into
-   * its first real state without any network call. Gateway
+  /** The first part of initiation: moves the attempt into its
+   * first real state without creating a gateway session. Gateway
    * adapters return the attempt as still initiated (the session
    * is created separately) or throw GatewayNotConfiguredError. */
-  abstract begin(input: ProviderInitiateInput): ProviderInitiateResult;
+  abstract begin(
+    input: ProviderInitiateInput,
+  ): ProviderInitiateResult | Promise<ProviderInitiateResult>;
   /** Hosted gateways only: creates the provider session. COD and
    * manual adapters do not implement this. */
   initiateSession?(

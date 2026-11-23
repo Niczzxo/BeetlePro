@@ -13,7 +13,7 @@ export class CheckoutController {
   /** Server-side totals for the given lines, address and payment
    * method. Nothing is persisted. */
   @Post('quote')
-  quote(@Body() body: unknown) {
+  async quote(@Body() body: unknown) {
     const dto: CheckoutRequest = parseBody(checkoutRequestSchema, body);
     return this.checkout.quote(dto);
   }
@@ -21,7 +21,7 @@ export class CheckoutController {
   /** Places the order: validates stock, reserves it, records the
    * order against the customer and returns it in pending status. */
   @Post('place-order')
-  placeOrder(@Body() body: unknown) {
+  async placeOrder(@Body() body: unknown) {
     const dto: CheckoutRequest = parseBody(checkoutRequestSchema, body);
     return this.checkout.placeOrder(dto);
   }

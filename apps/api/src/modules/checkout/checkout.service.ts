@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { randomInt, randomUUID } from 'node:crypto';
 import {
@@ -14,7 +15,11 @@ import {
   type Order,
 } from '@dostelo/types';
 import type { CheckoutRequest } from '@dostelo/validation';
-import { InMemoryDatabase } from '../../store/in-memory.store';
+import {
+  NoopTransactionRunner,
+  TransactionRunner,
+} from '../../prisma/transaction-runner';
+import { SettingsRepository } from '../../store/settings.repository';
 import { CatalogRepository } from '../catalog/repositories/catalog.repository';
 import { CartsRepository } from '../carts/repositories/carts.repository';
 import { CartsService } from '../carts/carts.service';
@@ -49,6 +54,12 @@ interface PricedLine extends CheckoutQuoteLine {
  *   waives the zone fee for everyone while it is on.
  * - Orders require a customer: a registered customerId, or contact
  *   details that find-or-create the customer record.
+ *
+ * Placement writes commit in one transaction
+ * (docs/PRISMA_MIGRATION.md): order row, status event, stock
+ * reservation, payment attempt, order payment status, customer
+ * counters, lead conversion and cart recovery marking. Customer
+ * resolution and pricing happen before the transaction opens.
  */
 @Injectable()
 export class CheckoutService {
@@ -59,19 +70,21 @@ export class CheckoutService {
     private readonly customers: CustomersService,
     private readonly orders: OrdersRepository,
     private readonly inventory: InventoryRepository,
-    private readonly db: InMemoryDatabase,
+    private readonly settings: SettingsRepository,
     private readonly payments: PaymentsService,
     private readonly visitors: VisitorsService,
     private readonly leads: LeadsService,
     private readonly cartRecovery: CartRecoveryService,
+    @Optional()
+    private readonly transactions: TransactionRunner = new NoopTransactionRunner(),
   ) {}
 
   /** Resolves the effective lines from inline lines or a cart. */
-  private resolveLines(
+  private async resolveLines(
     dto: CheckoutRequest,
-  ): { productId: string; variantId: string; quantity: number }[] {
+  ): Promise<{ productId: string; variantId: string; quantity: number }[]> {
     if (dto.cartId) {
-      const cart = this.carts.findById(dto.cartId);
+      const cart = await this.carts.findById(dto.cartId);
       if (!cart) {
         throw new NotFoundException(`Cart not found: ${dto.cartId}`);
       }
@@ -92,11 +105,12 @@ export class CheckoutService {
 
   /** Prices each line from the catalog. Throws on unknown or
    * inactive variants so a quote never invents a price. */
-  private priceLines(
+  private async priceLines(
     lines: { productId: string; variantId: string; quantity: number }[],
-  ): PricedLine[] {
-    return lines.map((line) => {
-      const found = this.catalog.findVariant(
+  ): Promise<PricedLine[]> {
+    const priced: PricedLine[] = [];
+    for (const line of lines) {
+      const found = await this.catalog.findVariant(
         line.productId,
         line.variantId,
       );
@@ -106,7 +120,7 @@ export class CheckoutService {
         );
       }
       const unitMinor = found.variant.price.amountMinor;
-      return {
+      priced.push({
         productId: line.productId,
         variantId: line.variantId,
         productName: found.product.name,
@@ -115,23 +129,24 @@ export class CheckoutService {
         quantity: line.quantity,
         unitPrice: money(unitMinor),
         lineTotal: money(unitMinor * line.quantity),
-      };
-    });
+      });
+    }
+    return priced;
   }
 
   /** The customer a quote belongs to, when one can be identified:
    * by customerId, or by the checkout contact phone/email. Guests
    * quote as first-order customers, matching the storefront. */
-  private orderCountFor(dto: CheckoutRequest): number {
+  private async orderCountFor(dto: CheckoutRequest): Promise<number> {
     if (dto.customerId) {
-      const customer = this.customers.findStored(dto.customerId);
+      const customer = await this.customers.findStored(dto.customerId);
       return this.orders.countByCustomer(customer.id);
     }
     if (dto.customer) {
-      const byPhone = this.customers.findStoredByPhone(dto.customer.phone);
+      const byPhone = await this.customers.findStoredByPhone(dto.customer.phone);
       if (byPhone) return this.orders.countByCustomer(byPhone.id);
       if (dto.customer.email) {
-        const byEmail = this.customers.findStoredByEmail(dto.customer.email);
+        const byEmail = await this.customers.findStoredByEmail(dto.customer.email);
         if (byEmail) return this.orders.countByCustomer(byEmail.id);
       }
       return 0;
@@ -139,8 +154,8 @@ export class CheckoutService {
     return 0;
   }
 
-  quote(dto: CheckoutRequest): CheckoutQuote {
-    const priced = this.priceLines(this.resolveLines(dto));
+  async quote(dto: CheckoutRequest): Promise<CheckoutQuote> {
+    const priced = await this.priceLines(await this.resolveLines(dto));
     const subtotalMinor = priced.reduce(
       (sum, line) => sum + line.lineTotal.amountMinor,
       0,
@@ -155,9 +170,10 @@ export class CheckoutService {
     const zone = detectZone(dto.address.district, addressText);
     const zoneFeeMinor = zone ? DELIVERY_ZONE_FEE_MINOR[zone] : 0;
 
-    const orderCount = this.orderCountFor(dto);
+    const orderCount = await this.orderCountFor(dto);
+    const settings = await this.settings.get();
     let freeDeliveryReason: CheckoutQuote['freeDeliveryReason'] = null;
-    if (this.db.settings.freeDeliveryOffer) {
+    if (settings.freeDeliveryOffer) {
       freeDeliveryReason = 'admin-offer';
     } else if (orderCount === 0) {
       freeDeliveryReason = 'first-order';
@@ -183,13 +199,15 @@ export class CheckoutService {
     };
   }
 
-  placeOrder(dto: CheckoutRequest): Order {
+  async placeOrder(dto: CheckoutRequest): Promise<Order> {
     // 1. Resolve the customer the order belongs to.
     let customerId: string;
     if (dto.customerId) {
-      customerId = this.customers.findStored(dto.customerId).id;
+      customerId = (await this.customers.findStored(dto.customerId)).id;
     } else if (dto.customer) {
-      customerId = this.customers.findOrCreateForCheckout(dto.customer).id;
+      customerId = (
+        await this.customers.findOrCreateForCheckout(dto.customer)
+      ).id;
     } else {
       throw new BadRequestException(
         'An account is needed to order: provide customerId or customer contact details',
@@ -197,18 +215,18 @@ export class CheckoutService {
     }
 
     // 2. Price the lines and compute totals for this customer.
-    const lines = this.resolveLines(dto);
-    const quote = this.quote({ ...dto, customerId });
+    const lines = await this.resolveLines(dto);
+    const quote = await this.quote({ ...dto, customerId });
     if (!quote.zone) {
       throw new BadRequestException(
         'Could not detect a delivery zone from the address',
       );
     }
-    const priced = this.priceLines(lines);
+    const priced = await this.priceLines(lines);
 
     // 3. Validate stock for every line before reserving anything.
     for (const line of priced) {
-      const record = this.inventory.getStock(line.variantId);
+      const record = await this.inventory.getStock(line.variantId);
       const available = record ? record.onHand - record.reserved : 0;
       if (available < line.quantity) {
         throw new BadRequestException(
@@ -221,7 +239,7 @@ export class CheckoutService {
     const now = new Date().toISOString();
     const order: Order = {
       id: randomUUID(),
-      orderNumber: this.nextOrderNumber(),
+      orderNumber: await this.nextOrderNumber(),
       customerId,
       status: 'pending',
       paymentStatus: 'initiated',
@@ -257,80 +275,99 @@ export class CheckoutService {
       updatedAt: now,
     };
     for (const item of order.items) item.orderId = order.id;
-    this.orders.create(order);
-    this.orders.addStatusEvent({
-      id: randomUUID(),
-      orderId: order.id,
-      status: 'pending',
-      note: 'Order placed',
-      actorId: customerId,
-      createdAt: now,
-    });
 
-    // 5. Reserve the stock, create the payment attempt through
-    // the payments module (it owns the attempt's lifecycle from
-    // here: COD collection, manual verification, gateway
-    // sessions), mirror its status onto the order, and count the
-    // order against the customer (drives the first-order rule).
-    this.inventory.reserve(
-      order.id,
-      priced.map((line) => ({
-        variantId: line.variantId,
-        quantity: line.quantity,
-      })),
-    );
-    const payment = this.payments.initiateForCheckout(
-      order,
-      dto.paymentMethod,
-    );
-    order.paymentStatus = payment.status;
-    this.orders.save(order);
-    this.customers.recordOrder(customerId, quote.total.amountMinor);
-    // 6. Buyer Intelligence (Phase 5): snapshot the customer's
-    // open leads BEFORE any linking for this order, so conversion
-    // below converts exactly the leads that existed beforehand.
-    // A candidate raised by this order's own guest-checkout link
-    // is not in the snapshot and stays open as a follow-up lead.
-    const openLeadIdsBeforeOrder = new Set(
-      this.leads.openLeadIdsForCustomer(customerId),
-    );
-    // When the order carries a first-party visitor id, the
-    // guest's browsing history links to this customer as a Guest
-    // Checkout identity (or stays Known Customer when already
-    // authenticated-linked). Any open lead for the customer then
-    // converts: the person bought.
-    if (dto.visitorId) {
-      this.visitors.linkGuestCheckout(customerId, dto.visitorId);
-    }
-    this.leads.markConvertedForCustomer(
-      customerId,
-      order.orderNumber,
-      openLeadIdsBeforeOrder,
-    );
-    // 7. Cart recovery (Phase 6): an order from this cart, or by
-    // this customer covering the recovery cart's lines, recovers
-    // any open abandoned-cart recovery and cancels its pending
-    // steps, so the customer is never chased after buying.
-    this.cartRecovery.markRecoveredForOrder({
-      customerId,
-      cartId: dto.cartId ?? null,
-      orderNumber: order.orderNumber,
-      lines: priced.map((line) => ({
-        variantId: line.variantId,
-        quantity: line.quantity,
-      })),
+    // Steps 4 to 7 commit together: the order, its first status
+    // event, the stock reservation, the payment attempt, the
+    // customer counters, lead conversion and cart recovery.
+    await this.transactions.run(async (tx) => {
+      await this.orders.create(order, tx);
+      await this.orders.addStatusEvent(
+        {
+          id: randomUUID(),
+          orderId: order.id,
+          status: 'pending',
+          note: 'Order placed',
+          actorId: customerId,
+          createdAt: now,
+        },
+        tx,
+      );
+
+      // 5. Reserve the stock, create the payment attempt through
+      // the payments module (it owns the attempt's lifecycle from
+      // here: COD collection, manual verification, gateway
+      // sessions), mirror its status onto the order, and count the
+      // order against the customer (drives the first-order rule).
+      await this.inventory.reserve(
+        order.id,
+        priced.map((line) => ({
+          variantId: line.variantId,
+          quantity: line.quantity,
+        })),
+        tx,
+      );
+      const payment = await this.payments.initiateForCheckout(
+        order,
+        dto.paymentMethod,
+        tx,
+      );
+      order.paymentStatus = payment.status;
+      await this.orders.save(order, tx);
+      await this.customers.recordOrder(
+        customerId,
+        quote.total.amountMinor,
+        tx,
+      );
+      // 6. Buyer Intelligence (Phase 5): snapshot the customer's
+      // open leads BEFORE any linking for this order, so conversion
+      // below converts exactly the leads that existed beforehand.
+      // A candidate raised by this order's own guest-checkout link
+      // is not in the snapshot and stays open as a follow-up lead.
+      const openLeadIdsBeforeOrder = new Set(
+        await this.leads.openLeadIdsForCustomer(customerId, tx),
+      );
+      // When the order carries a first-party visitor id, the
+      // guest's browsing history links to this customer as a Guest
+      // Checkout identity (or stays Known Customer when already
+      // authenticated-linked). Any open lead for the customer then
+      // converts: the person bought.
+      if (dto.visitorId) {
+        await this.visitors.linkGuestCheckout(customerId, dto.visitorId, tx);
+      }
+      await this.leads.markConvertedForCustomer(
+        customerId,
+        order.orderNumber,
+        openLeadIdsBeforeOrder,
+        tx,
+      );
+      // 7. Cart recovery (Phase 6): an order from this cart, or by
+      // this customer covering the recovery cart's lines, recovers
+      // any open abandoned-cart recovery and cancels its pending
+      // steps, so the customer is never chased after buying.
+      await this.cartRecovery.markRecoveredForOrder(
+        {
+          customerId,
+          cartId: dto.cartId ?? null,
+          orderNumber: order.orderNumber,
+          lines: priced.map((line) => ({
+            variantId: line.variantId,
+            quantity: line.quantity,
+          })),
+        },
+        tx,
+      );
+      if (dto.cartId) {
+        await this.cartsService.markConverted(dto.cartId, tx);
+      }
     });
-    if (dto.cartId) {
-      this.cartsService.markConverted(dto.cartId);
-    }
     return order;
   }
 
   /** Legacy order number format: BP- plus 6 digits. */
-  private nextOrderNumber(): string {
+  private async nextOrderNumber(): Promise<string> {
     for (let attempt = 0; attempt < 20; attempt += 1) {
       const candidate = `BP-${randomInt(100000, 1000000)}`;
-      if (!this.orders.findByNumber(candidate)) return candidate;
+      if (!(await this.orders.findByNumber(candidate))) return candidate;
     }
     throw new BadRequestException('Could not allocate an order number');
   }

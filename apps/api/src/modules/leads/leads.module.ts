@@ -8,6 +8,7 @@ import { LeadsController } from './leads.controller';
 import { LeadsService } from './leads.service';
 import { LeadsRepository } from './repositories/leads.repository';
 import { InMemoryLeadsRepository } from './repositories/in-memory-leads.repository';
+import { PrismaLeadsRepository } from './repositories/prisma-leads.repository';
 
 /**
  * Leads module (Phase 5): the lead pipeline, assignment,
@@ -27,7 +28,7 @@ import { InMemoryLeadsRepository } from './repositories/in-memory-leads.reposito
   controllers: [LeadsController],
   providers: [
     LeadsService,
-    { provide: LeadsRepository, useClass: InMemoryLeadsRepository },
+    { provide: LeadsRepository, useClass: process.env.DATABASE_URL ? PrismaLeadsRepository : InMemoryLeadsRepository },
   ],
   exports: [LeadsService, LeadsRepository],
 })

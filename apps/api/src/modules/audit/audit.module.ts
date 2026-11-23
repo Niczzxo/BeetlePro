@@ -3,6 +3,7 @@ import { AuditController } from './audit.controller';
 import { AuditService } from './audit.service';
 import { AuditRepository } from './repositories/audit.repository';
 import { InMemoryAuditRepository } from './repositories/in-memory-audit.repository';
+import { PrismaAuditRepository } from './repositories/prisma-audit.repository';
 
 /**
  * Audit module (Phase 4): the append-only trail for sensitive
@@ -13,7 +14,7 @@ import { InMemoryAuditRepository } from './repositories/in-memory-audit.reposito
   controllers: [AuditController],
   providers: [
     AuditService,
-    { provide: AuditRepository, useClass: InMemoryAuditRepository },
+    { provide: AuditRepository, useClass: process.env.DATABASE_URL ? PrismaAuditRepository : InMemoryAuditRepository },
   ],
   exports: [AuditService, AuditRepository],
 })

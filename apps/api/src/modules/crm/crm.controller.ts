@@ -36,13 +36,13 @@ export class CrmController {
 
   @Get(':id/timeline')
   @RequirePermission('customers.read')
-  timeline(@Param('id') id: string) {
+  async timeline(@Param('id') id: string) {
     return this.crm.getTimeline(id);
   }
 
   @Post(':id/notes')
   @RequirePermission('customers.edit')
-  addNote(
+  async addNote(
     @Param('id') id: string,
     @Body() body: unknown,
     @CurrentUser() user: AuthPrincipal,
@@ -56,22 +56,22 @@ export class CrmController {
 
   @Post(':id/tags')
   @RequirePermission('customers.edit')
-  addTag(
+  async addTag(
     @Param('id') id: string,
     @Body() body: unknown,
     @CurrentUser() user: AuthPrincipal,
   ) {
     const dto: CustomerTagInput = parseBody(customerTagSchema, body);
-    return { tags: this.crm.addTag(id, dto.tag, user) };
+    return { tags: await this.crm.addTag(id, dto.tag, user) };
   }
 
   @Delete(':id/tags/:tag')
   @RequirePermission('customers.edit')
-  removeTag(
+  async removeTag(
     @Param('id') id: string,
     @Param('tag') tag: string,
     @CurrentUser() user: AuthPrincipal,
   ) {
-    return { tags: this.crm.removeTag(id, decodeURIComponent(tag), user) };
+    return { tags: await this.crm.removeTag(id, decodeURIComponent(tag), user) };
   }
 }

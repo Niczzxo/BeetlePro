@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Injectable,
   NotFoundException,
+  Optional,
   ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -11,6 +12,10 @@ import {
   bkashConfig,
   sslcommerzConfig,
 } from '../../config/payments.config';
+import {
+  NoopTransactionRunner,
+  TransactionRunner,
+} from '../../prisma/transaction-runner';
 import { PaymentsService } from '../payments/payments.service';
 import { PaymentsRepository } from '../payments/repositories/payments.repository';
 import {
@@ -54,20 +59,24 @@ const WEBHOOK_GATEWAYS: PaymentGateway[] = ['sslcommerz', 'bkash'];
  *    as a duplicate without re-applying anything.
  * 5. A first, verified delivery applies its outcome to the
  *    payment and, through the payments service, to the order.
+ *    Recording the delivery and applying its outcome commit in
+ *    one transaction (docs/PRISMA_MIGRATION.md).
  */
 @Injectable()
 export class WebhooksService {
   constructor(
     private readonly payments: PaymentsService,
     private readonly paymentsRepo: PaymentsRepository,
+    @Optional()
+    private readonly transactions: TransactionRunner = new NoopTransactionRunner(),
   ) {}
 
-  handle(
+  async handle(
     gatewayParam: string,
     payload: Record<string, unknown>,
     signature: string | undefined,
     rawBody: string | undefined,
-  ): WebhookHandleResult {
+  ): Promise<WebhookHandleResult> {
     if (!WEBHOOK_GATEWAYS.includes(gatewayParam as PaymentGateway)) {
       throw new NotFoundException(
         `No webhook endpoint for gateway: ${gatewayParam}`,
@@ -75,54 +84,63 @@ export class WebhooksService {
     }
     const gateway = gatewayParam as PaymentGateway;
     this.verifyDelivery(gateway, payload, signature, rawBody);
-    const parsed = this.parse(gateway, payload);
+    const parsed = await this.parse(gateway, payload);
 
-    const { event, duplicate } = this.paymentsRepo.recordWebhookEvent({
-      id: randomUUID(),
-      gateway,
-      providerEventId: parsed.providerEventId,
-      paymentId: parsed.payment?.id ?? null,
-      payload,
-      createdAt: new Date().toISOString(),
-    });
-    if (duplicate) {
-      return {
-        received: true,
-        duplicate: true,
-        applied: false,
-        paymentId: event.paymentId,
-      };
-    }
-    if (!parsed.payment) {
+    return this.transactions.run(async (tx) => {
+      const { event, duplicate } =
+        await this.paymentsRepo.recordWebhookEvent(
+          {
+            id: randomUUID(),
+            gateway,
+            providerEventId: parsed.providerEventId,
+            paymentId: parsed.payment?.id ?? null,
+            payload,
+            createdAt: new Date().toISOString(),
+          },
+          tx,
+        );
+      if (duplicate) {
+        return {
+          received: true,
+          duplicate: true,
+          applied: false,
+          paymentId: event.paymentId,
+        } as WebhookHandleResult;
+      }
+      if (!parsed.payment) {
+        return {
+          received: true,
+          duplicate: false,
+          applied: false,
+          paymentId: null,
+          reason: 'No payment matches this delivery; it was recorded only.',
+        } as WebhookHandleResult;
+      }
+      if (!parsed.outcome) {
+        return {
+          received: true,
+          duplicate: false,
+          applied: false,
+          paymentId: parsed.payment.id,
+          reason: `Unhandled gateway status: ${parsed.unhandledStatus ?? 'unknown'}`,
+        } as WebhookHandleResult;
+      }
+      await this.payments.applyGatewayOutcome(
+        {
+          payment: parsed.payment,
+          outcome: parsed.outcome,
+          providerTxnId: parsed.providerTxnId,
+          payload,
+        },
+        tx,
+      );
       return {
         received: true,
         duplicate: false,
-        applied: false,
-        paymentId: null,
-        reason: 'No payment matches this delivery; it was recorded only.',
-      };
-    }
-    if (!parsed.outcome) {
-      return {
-        received: true,
-        duplicate: false,
-        applied: false,
+        applied: true,
         paymentId: parsed.payment.id,
-        reason: `Unhandled gateway status: ${parsed.unhandledStatus ?? 'unknown'}`,
-      };
-    }
-    this.payments.applyGatewayOutcome({
-      payment: parsed.payment,
-      outcome: parsed.outcome,
-      providerTxnId: parsed.providerTxnId,
-      payload,
+      } as WebhookHandleResult;
     });
-    return {
-      received: true,
-      duplicate: false,
-      applied: true,
-      paymentId: parsed.payment.id,
-    };
   }
 
   /** Rejects the delivery when the gateway has no webhook secret
@@ -158,10 +176,10 @@ export class WebhooksService {
     }
   }
 
-  private parse(
+  private async parse(
     gateway: PaymentGateway,
     payload: Record<string, unknown>,
-  ): ParsedWebhook {
+  ): Promise<ParsedWebhook> {
     if (gateway === 'sslcommerz') return this.parseSslcommerz(payload);
     return this.parseBkash(payload);
   }
@@ -169,9 +187,9 @@ export class WebhooksService {
   /** SSLCommerz IPN shape: tran_id is the payment id (set at
    * session creation), val_id is the provider's validation id,
    * status is VALID, VALIDATED, FAILED or CANCELLED. */
-  private parseSslcommerz(
+  private async parseSslcommerz(
     payload: Record<string, unknown>,
-  ): ParsedWebhook {
+  ): Promise<ParsedWebhook> {
     const tranId = String(payload.tran_id ?? '');
     const valId = payload.val_id ? String(payload.val_id) : '';
     const providerEventId = valId || tranId;
@@ -180,7 +198,9 @@ export class WebhooksService {
         'SSLCommerz webhook payload carries neither val_id nor tran_id',
       );
     }
-    const payment = tranId ? this.paymentsRepo.findById(tranId) : null;
+    const payment = tranId
+      ? await this.paymentsRepo.findById(tranId)
+      : null;
     const status = String(payload.status ?? '');
     const outcome: GatewayOutcome | null =
       status === 'VALID' || status === 'VALIDATED'
@@ -204,7 +224,9 @@ export class WebhooksService {
    * provider transaction id at creation), trxID identifies the
    * completed transaction, status is Completed, Failed or
    * Cancelled. */
-  private parseBkash(payload: Record<string, unknown>): ParsedWebhook {
+  private async parseBkash(
+    payload: Record<string, unknown>,
+  ): Promise<ParsedWebhook> {
     const paymentIdRef = String(payload.paymentID ?? '');
     const trxId = payload.trxID ? String(payload.trxID) : '';
     const providerEventId = trxId || paymentIdRef;
@@ -214,7 +236,7 @@ export class WebhooksService {
       );
     }
     const payment = paymentIdRef
-      ? this.paymentsRepo.findByProviderTxnId(paymentIdRef)
+      ? await this.paymentsRepo.findByProviderTxnId(paymentIdRef)
       : null;
     const status = String(payload.status ?? '');
     const outcome: GatewayOutcome | null =

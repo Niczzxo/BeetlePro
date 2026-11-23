@@ -7,6 +7,7 @@ import { CrmController } from './crm.controller';
 import { CrmService } from './crm.service';
 import { CrmRepository } from './repositories/crm.repository';
 import { InMemoryCrmRepository } from './repositories/in-memory-crm.repository';
+import { PrismaCrmRepository } from './repositories/prisma-crm.repository';
 
 /**
  * CRM module (Phase 5): the customer timeline (orders, linked
@@ -17,7 +18,7 @@ import { InMemoryCrmRepository } from './repositories/in-memory-crm.repository';
   controllers: [CrmController],
   providers: [
     CrmService,
-    { provide: CrmRepository, useClass: InMemoryCrmRepository },
+    { provide: CrmRepository, useClass: process.env.DATABASE_URL ? PrismaCrmRepository : InMemoryCrmRepository },
   ],
   exports: [CrmService],
 })

@@ -45,7 +45,7 @@ export class LeadsController {
 
   @Post()
   @RequirePermission('leads.create')
-  create(
+  async create(
     @Body() body: unknown,
     @CurrentUser() user: AuthPrincipal,
   ) {
@@ -55,7 +55,7 @@ export class LeadsController {
 
   @Get()
   @RequirePermission('leads.read')
-  list(
+  async list(
     @Query('status') status?: string,
     @Query('assigneeId') assigneeId?: string,
   ) {
@@ -63,7 +63,7 @@ export class LeadsController {
       ? (status as LeadStatus)
       : undefined;
     return {
-      items: this.leads.list({
+      items: await this.leads.list({
         status: parsedStatus,
         assigneeId: assigneeId || undefined,
       }),
@@ -72,13 +72,13 @@ export class LeadsController {
 
   @Get(':id')
   @RequirePermission('leads.read')
-  detail(@Param('id') id: string) {
+  async detail(@Param('id') id: string) {
     return this.leads.getDetail(id);
   }
 
   @Post(':id/assign')
   @RequirePermission('leads.assign')
-  assign(
+  async assign(
     @Param('id') id: string,
     @Body() body: unknown,
     @CurrentUser() user: AuthPrincipal,
@@ -89,7 +89,7 @@ export class LeadsController {
 
   @Post(':id/status')
   @RequirePermission('leads.edit')
-  changeStatus(
+  async changeStatus(
     @Param('id') id: string,
     @Body() body: unknown,
     @CurrentUser() user: AuthPrincipal,
@@ -100,7 +100,7 @@ export class LeadsController {
 
   @Post(':id/follow-ups')
   @RequirePermission('leads.edit')
-  createTask(
+  async createTask(
     @Param('id') id: string,
     @Body() body: unknown,
     @CurrentUser() user: AuthPrincipal,
@@ -114,13 +114,13 @@ export class LeadsController {
 
   @Get(':id/follow-ups')
   @RequirePermission('leads.read')
-  listTasks(@Param('id') id: string) {
-    return { items: this.leads.listTasks(id) };
+  async listTasks(@Param('id') id: string) {
+    return { items: await this.leads.listTasks(id) };
   }
 
   @Post(':id/follow-ups/:taskId/complete')
   @RequirePermission('leads.edit')
-  completeTask(
+  async completeTask(
     @Param('id') id: string,
     @Param('taskId') taskId: string,
     @CurrentUser() user: AuthPrincipal,
@@ -130,7 +130,7 @@ export class LeadsController {
 
   @Post(':id/contact-attempts')
   @RequirePermission('leads.contact')
-  recordAttempt(
+  async recordAttempt(
     @Param('id') id: string,
     @Body() body: unknown,
     @CurrentUser() user: AuthPrincipal,
@@ -141,13 +141,13 @@ export class LeadsController {
 
   @Get(':id/contact-attempts')
   @RequirePermission('leads.read')
-  listAttempts(@Param('id') id: string) {
-    return { items: this.leads.listAttempts(id) };
+  async listAttempts(@Param('id') id: string) {
+    return { items: await this.leads.listAttempts(id) };
   }
 
   @Post(':id/opt-out')
   @RequirePermission('leads.edit')
-  optOut(
+  async optOut(
     @Param('id') id: string,
     @CurrentUser() user: AuthPrincipal,
   ) {

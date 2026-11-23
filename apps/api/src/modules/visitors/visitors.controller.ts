@@ -42,9 +42,9 @@ export class VisitorsController {
   @Post('visitor-events')
   @UseGuards(RateLimitGuard)
   @RateLimit(EVENT_RATE_LIMIT)
-  ingest(@Body() body: unknown) {
+  async ingest(@Body() body: unknown) {
     const dto: VisitorEventIngest = parseBody(visitorEventSchema, body);
-    const event = this.visitors.ingestEvent(dto);
+    const event = await this.visitors.ingestEvent(dto);
     return {
       id: event.id,
       sessionId: event.sessionId,
@@ -55,14 +55,14 @@ export class VisitorsController {
   @Post('visitors/consent')
   @UseGuards(RateLimitGuard)
   @RateLimit(CONSENT_RATE_LIMIT)
-  consent(@Body() body: unknown) {
+  async consent(@Body() body: unknown) {
     const dto: ConsentRecordInput = parseBody(consentRecordSchema, body);
     return this.visitors.recordConsent(dto);
   }
 
   @Post('visitors/link')
   @UseGuards(AuthGuard)
-  link(
+  async link(
     @Body() body: unknown,
     @CurrentUser() user: AuthPrincipal | null,
   ) {
@@ -72,7 +72,7 @@ export class VisitorsController {
       );
     }
     const dto: VisitorLinkInput = parseBody(visitorLinkSchema, body);
-    const link = this.visitors.linkAuthenticated(user.id, dto.visitorId);
+    const link = await this.visitors.linkAuthenticated(user.id, dto.visitorId);
     return {
       visitorId: link.visitorId,
       customerId: link.customerId,

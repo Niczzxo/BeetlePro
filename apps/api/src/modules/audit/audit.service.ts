@@ -34,7 +34,7 @@ export interface AuditRecordInput {
 export class AuditService {
   constructor(private readonly audit: AuditRepository) {}
 
-  record(input: AuditRecordInput): AuditLogEntry {
+  async record(input: AuditRecordInput): Promise<AuditLogEntry> {
     const entry: AuditLogEntry = {
       id: randomUUID(),
       actorType: input.actorType,
@@ -47,16 +47,16 @@ export class AuditService {
       ipAddress: input.ipAddress ?? null,
       createdAt: new Date().toISOString(),
     };
-    this.audit.append(entry);
+    await this.audit.append(entry);
     return entry;
   }
 
   /** Records an action taken by the token principal, mapping the
    * principal onto the audit actor fields. */
-  recordForPrincipal(
+  async recordForPrincipal(
     principal: AuthPrincipal,
     input: Omit<AuditRecordInput, 'actorType' | 'actorId' | 'actorRole'>,
-  ): AuditLogEntry {
+  ): Promise<AuditLogEntry> {
     return this.record({
       ...input,
       actorType: principal.type,
@@ -65,7 +65,7 @@ export class AuditService {
     });
   }
 
-  list(filter: AuditFilter): AuditLogEntry[] {
+  async list(filter: AuditFilter): Promise<AuditLogEntry[]> {
     return this.audit.list(filter);
   }
 }

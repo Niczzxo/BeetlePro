@@ -15,41 +15,41 @@ export class InMemoryCartRecoveryRepository extends CartRecoveryRepository {
     super();
   }
 
-  create(recovery: AbandonedCart): AbandonedCart {
+  async create(recovery: AbandonedCart): Promise<AbandonedCart> {
     this.db.abandonedCarts.set(recovery.id, recovery);
     return recovery;
   }
 
-  save(recovery: AbandonedCart): void {
+  async save(recovery: AbandonedCart): Promise<void> {
     this.db.abandonedCarts.set(recovery.id, recovery);
   }
 
-  findById(id: string): AbandonedCart | null {
+  async findById(id: string): Promise<AbandonedCart | null> {
     return this.db.abandonedCarts.get(id) ?? null;
   }
 
-  findByCartId(cartId: string): AbandonedCart | null {
+  async findByCartId(cartId: string): Promise<AbandonedCart | null> {
     for (const recovery of this.db.abandonedCarts.values()) {
       if (recovery.cartId === cartId) return recovery;
     }
     return null;
   }
 
-  findByToken(token: string): AbandonedCart | null {
+  async findByToken(token: string): Promise<AbandonedCart | null> {
     for (const recovery of this.db.abandonedCarts.values()) {
       if (recovery.recoveryToken === token) return recovery;
     }
     return null;
   }
 
-  list(): AbandonedCart[] {
+  async list(): Promise<AbandonedCart[]> {
     return [...this.db.abandonedCarts.values()].sort((a, b) =>
       b.detectedAt.localeCompare(a.detectedAt),
     );
   }
 
-  findOpenForCustomer(customerId: string): AbandonedCart[] {
-    return this.list().filter(
+  async findOpenForCustomer(customerId: string): Promise<AbandonedCart[]> {
+    return (await this.list()).filter(
       (recovery) =>
         recovery.customerId === customerId &&
         (recovery.status === 'detected' ||
@@ -57,26 +57,26 @@ export class InMemoryCartRecoveryRepository extends CartRecoveryRepository {
     );
   }
 
-  createAttempt(attempt: RecoveryAttempt): RecoveryAttempt {
+  async createAttempt(attempt: RecoveryAttempt): Promise<RecoveryAttempt> {
     this.db.recoveryAttempts.set(attempt.id, attempt);
     return attempt;
   }
 
-  saveAttempt(attempt: RecoveryAttempt): void {
+  async saveAttempt(attempt: RecoveryAttempt): Promise<void> {
     this.db.recoveryAttempts.set(attempt.id, attempt);
   }
 
-  findAttempt(id: string): RecoveryAttempt | null {
+  async findAttempt(id: string): Promise<RecoveryAttempt | null> {
     return this.db.recoveryAttempts.get(id) ?? null;
   }
 
-  listAttempts(abandonedCartId: string): RecoveryAttempt[] {
+  async listAttempts(abandonedCartId: string): Promise<RecoveryAttempt[]> {
     return [...this.db.recoveryAttempts.values()]
       .filter((attempt) => attempt.abandonedCartId === abandonedCartId)
       .sort((a, b) => a.stepNumber - b.stepNumber);
   }
 
-  getSettings(): RecoverySettings {
+  async getSettings(): Promise<RecoverySettings> {
     if (!this.db.recoverySettings) {
       const config = recoveryConfig();
       this.db.recoverySettings = {
@@ -90,7 +90,7 @@ export class InMemoryCartRecoveryRepository extends CartRecoveryRepository {
     return this.db.recoverySettings;
   }
 
-  saveSettings(settings: RecoverySettings): void {
+  async saveSettings(settings: RecoverySettings): Promise<void> {
     this.db.recoverySettings = settings;
   }
 }

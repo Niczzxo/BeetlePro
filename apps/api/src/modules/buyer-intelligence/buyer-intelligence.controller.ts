@@ -18,7 +18,7 @@ export class BuyerIntelligenceController {
 
   @Get('sessions')
   @RequirePermission('buyers.read')
-  listSessions(
+  async listSessions(
     @Query('status') status?: string,
     @Query('minScore') minScore?: string,
   ) {
@@ -29,7 +29,7 @@ export class BuyerIntelligenceController {
       : undefined;
     const parsedMin = minScore ? Number(minScore) : undefined;
     return {
-      items: this.intelligence.listSessions({
+      items: await this.intelligence.listSessions({
         status: parsedStatus,
         minScore:
           parsedMin !== undefined && Number.isFinite(parsedMin)
@@ -41,7 +41,7 @@ export class BuyerIntelligenceController {
 
   @Get('sessions/:sessionId')
   @RequirePermission('buyers.read')
-  getSession(@Param('sessionId') sessionId: string) {
+  async getSession(@Param('sessionId') sessionId: string) {
     return this.intelligence.getSession(sessionId);
   }
 }

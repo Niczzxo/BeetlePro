@@ -4,6 +4,7 @@ import type {
   ShipmentStatus,
   ShipmentStatusEvent,
 } from '@dostelo/types';
+import type { Tx } from '../../../prisma/prisma.service';
 import type { CourierWebhookRecord } from '../../../store/in-memory.store';
 
 export interface ShipmentListFilter {
@@ -18,25 +19,38 @@ export interface ShipmentListFilter {
  * the database schema.
  */
 export abstract class ShippingRepository {
-  abstract create(shipment: Shipment): Shipment;
-  abstract save(shipment: Shipment): void;
-  abstract findById(id: string): Shipment | null;
+  abstract create(shipment: Shipment, tx?: Tx): Promise<Shipment>;
+  abstract save(shipment: Shipment, tx?: Tx): Promise<void>;
+  abstract findById(id: string, tx?: Tx): Promise<Shipment | null>;
   abstract findByTrackingId(
     courier: Courier,
     trackingId: string,
-  ): Shipment | null;
-  abstract listByOrder(orderId: string): Shipment[];
-  abstract list(filter: ShipmentListFilter): Shipment[];
-  abstract addEvent(event: ShipmentStatusEvent): void;
-  abstract listEvents(shipmentId: string): ShipmentStatusEvent[];
+    tx?: Tx,
+  ): Promise<Shipment | null>;
+  abstract listByOrder(
+    orderId: string,
+    tx?: Tx,
+  ): Promise<Shipment[]>;
+  abstract list(
+    filter: ShipmentListFilter,
+    tx?: Tx,
+  ): Promise<Shipment[]>;
+  abstract addEvent(
+    event: ShipmentStatusEvent,
+    tx?: Tx,
+  ): Promise<void>;
+  abstract listEvents(
+    shipmentId: string,
+    tx?: Tx,
+  ): Promise<ShipmentStatusEvent[]>;
   /**
    * Records a courier webhook delivery, keyed by courier plus
    * provider event id (the payment webhook pattern): a
    * redelivery comes back with duplicate true and the caller
    * applies nothing twice.
    */
-  abstract recordWebhookDelivery(record: CourierWebhookRecord): {
-    record: CourierWebhookRecord;
-    duplicate: boolean;
-  };
+  abstract recordWebhookDelivery(
+    record: CourierWebhookRecord,
+    tx?: Tx,
+  ): Promise<{ record: CourierWebhookRecord; duplicate: boolean }>;
 }

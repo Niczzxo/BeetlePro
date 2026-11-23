@@ -67,7 +67,7 @@ async function createAdmin(
     createdAt: now,
     updatedAt: now,
   };
-  ctx.adminsRepo.create(admin);
+  await ctx.adminsRepo.create(admin);
   return admin;
 }
 
@@ -82,7 +82,7 @@ async function registerCustomer(ctx: TestContext) {
 
 async function placeBkashOrder(ctx: TestContext) {
   const customer = await registerCustomer(ctx);
-  const { variant } = findVariant(ctx, 'sneakers-court', 'EU 41', 'White');
+  const { variant } = await findVariant(ctx, 'sneakers-court', 'EU 41', 'White');
   const request: CheckoutRequest = {
     lines: [
       { productId: 'sneakers-court', variantId: variant.id, quantity: 1 },
@@ -91,8 +91,8 @@ async function placeBkashOrder(ctx: TestContext) {
     address: DHAKA_ADDRESS,
     paymentMethod: 'bkash',
   };
-  const order = ctx.checkout.placeOrder(request);
-  const payment = ctx.paymentsRepo.listByOrder(order.id).at(-1);
+  const order = await ctx.checkout.placeOrder(request);
+  const payment = (await ctx.paymentsRepo.listByOrder(order.id)).at(-1);
   if (!payment) throw new Error('checkout created no payment attempt');
   return { customer, order, payment };
 }
@@ -123,7 +123,7 @@ describe('Customer auth', () => {
     );
     expect(byPhone.principal.id).toBe(customer.id);
     expect(
-      ctx.audit.list({ action: 'auth.login.succeeded' }),
+      await ctx.audit.list({ action: 'auth.login.succeeded' }),
     ).toHaveLength(2);
   });
 
@@ -136,7 +136,7 @@ describe('Customer auth', () => {
         '127.0.0.1',
       ),
     ).rejects.toThrow(UnauthorizedException);
-    const failures = ctx.audit.list({ action: 'auth.login.failed' });
+    const failures = await ctx.audit.list({ action: 'auth.login.failed' });
     expect(failures).toHaveLength(1);
     expect(failures[0]?.actorId).toBe(customer.id);
   });
@@ -148,15 +148,15 @@ describe('Customer auth', () => {
       { identifier: customer.email as string, password: 'password123' },
       null,
     );
-    const second = ctx.auth.refresh(first.refreshToken);
+    const second = await ctx.auth.refresh(first.refreshToken);
     expect(second.refreshToken).not.toBe(first.refreshToken);
     expect(second.principal.id).toBe(customer.id);
     // Reusing the rotated token is treated as a leak.
-    expect(() => ctx.auth.refresh(first.refreshToken)).toThrow(
+    await expect(ctx.auth.refresh(first.refreshToken)).rejects.toThrow(
       /reuse detected/,
     );
     // And the whole family, including the newest token, is dead.
-    expect(() => ctx.auth.refresh(second.refreshToken)).toThrow(
+    await expect(ctx.auth.refresh(second.refreshToken)).rejects.toThrow(
       UnauthorizedException,
     );
   });
@@ -168,10 +168,10 @@ describe('Customer auth', () => {
       { identifier: customer.email as string, password: 'password123' },
       null,
     );
-    expect(ctx.auth.logout(tokens.refreshToken)).toEqual({
+    expect(await ctx.auth.logout(tokens.refreshToken)).toEqual({
       revoked: true,
     });
-    expect(() => ctx.auth.refresh(tokens.refreshToken)).toThrow(
+    await expect(ctx.auth.refresh(tokens.refreshToken)).rejects.toThrow(
       UnauthorizedException,
     );
   });
@@ -221,7 +221,7 @@ describe('Admin auth and seeding', () => {
     expect(seeded?.email).toBe('owner@dostelo.example');
     expect(seeded?.roles).toEqual(['super-admin']);
     expect(
-      ctx.audit.list({ action: 'admin.seeded' }),
+      await ctx.audit.list({ action: 'admin.seeded' }),
     ).toHaveLength(1);
 
     const tokens = await ctx.auth.loginAdmin(
@@ -242,7 +242,7 @@ describe('Admin auth and seeding', () => {
       ),
     ).rejects.toThrow(UnauthorizedException);
     expect(
-      ctx.audit.list({ action: 'admin.login.failed' }),
+      await ctx.audit.list({ action: 'admin.login.failed' }),
     ).toHaveLength(1);
   });
 });
@@ -316,12 +316,12 @@ describe('Audit trail for staff actions', () => {
     const ctx = createTestContext();
     const { order } = await placeBkashOrder(ctx);
     const manager = adminPrincipal(['store-manager']);
-    ctx.ordersService.transition(
+    await ctx.ordersService.transition(
       order.orderNumber,
       { status: 'confirmed' },
       manager,
     );
-    const entries = ctx.audit.list({
+    const entries = await ctx.audit.list({
       action: 'order.status.transition',
     });
     expect(entries).toHaveLength(1);
@@ -338,11 +338,11 @@ describe('Audit trail for staff actions', () => {
     const ctx = createTestContext();
     const { payment } = await placeBkashOrder(ctx);
     const accountant = adminPrincipal(['accountant']);
-    ctx.payments.confirmManualPayment(payment.id, {
+    await ctx.payments.confirmManualPayment(payment.id, {
       senderNumber: '01712345678',
       transactionId: 'TXN-AUDIT-1',
     });
-    ctx.payments.verifyManualPayment(
+    await ctx.payments.verifyManualPayment(
       payment.id,
       { decision: 'paid' },
       accountant,
@@ -353,7 +353,7 @@ describe('Audit trail for staff actions', () => {
       accountant,
     );
     expect(refund.status).toBe('manual-pending');
-    const actions = ctx.audit.list({ actorId: accountant.id }).map(
+    const actions = (await ctx.audit.list({ actorId: accountant.id })).map(
       (entry) => entry.action,
     );
     expect(actions).toContain('payment.verified');
@@ -362,10 +362,10 @@ describe('Audit trail for staff actions', () => {
 
   it('records an inventory adjustment with its actor', async () => {
     const ctx = createTestContext();
-    const { variant } = findVariant(ctx, 'sneakers-court', 'EU 41', 'White');
+    const { variant } = await findVariant(ctx, 'sneakers-court', 'EU 41', 'White');
     const manager = adminPrincipal(['product-manager']);
-    ctx.inventoryService.adjust(variant.id, { delta: 5 }, manager);
-    const entries = ctx.audit.list({ action: 'inventory.adjusted' });
+    await ctx.inventoryService.adjust(variant.id, { delta: 5 }, manager);
+    const entries = await ctx.audit.list({ action: 'inventory.adjusted' });
     expect(entries).toHaveLength(1);
     expect(entries[0]?.entityId).toBe(variant.id);
     expect(entries[0]?.metadata).toMatchObject({ delta: 5 });
@@ -384,12 +384,12 @@ describe('Admin MFA (TOTP)', () => {
     );
     expect(isMfaChallenge(before)).toBe(false);
 
-    const enrolment = ctx.auth.enrollMfa(principal, null);
+    const enrolment = await ctx.auth.enrollMfa(principal, null);
     expect(enrolment.otpauthUrl).toContain('otpauth://totp/');
     expect(enrolment.otpauthUrl).toContain(enrolment.secret);
-    ctx.auth.enableMfa(principal, totpNow(enrolment.secret), null);
+    await ctx.auth.enableMfa(principal, totpNow(enrolment.secret), null);
     expect(
-      ctx.audit.list({ action: 'admin.mfa.enabled' }),
+      await ctx.audit.list({ action: 'admin.mfa.enabled' }),
     ).toHaveLength(1);
 
     const challenged = await ctx.auth.loginAdmin(
@@ -405,22 +405,22 @@ describe('Admin MFA (TOTP)', () => {
       ),
     ).rejects.toThrow(UnauthorizedException);
 
-    const stored = ctx.adminsRepo.findById(admin.id);
+    const stored = await ctx.adminsRepo.findById(admin.id);
     if (!stored?.mfaSecret) throw new Error('MFA secret missing');
-    const tokens = ctx.auth.exchangeMfaChallenge(
+    const tokens = await ctx.auth.exchangeMfaChallenge(
       challenged.challengeId,
       totpNow(stored.mfaSecret),
       null,
     );
     expect(tokens.principal.id).toBe(admin.id);
     // The challenge is single-use.
-    expect(() =>
+    await expect(
       ctx.auth.exchangeMfaChallenge(
         challenged.challengeId,
         totpNow(stored.mfaSecret as string),
         null,
       ),
-    ).toThrow(UnauthorizedException);
+    ).rejects.toThrow(UnauthorizedException);
   });
 });
 
