@@ -1159,40 +1159,55 @@ footer .fsep{color:rgba(244,242,237,.32)}
   footer .paylogos{justify-content:center}
 }
 @media (max-width:767px){
-  footer{margin-top:42px;padding-top:36px}
+  /* Mobile footer is an inset rounded panel, per the approved reference. */
+  footer{margin:42px 11px 12px;border:1px solid rgba(244,242,237,.14);border-radius:26px;overflow:hidden;padding:30px 0 26px}
+  footer .wrap{padding-left:24px;padding-right:24px}
   footer .fgrid{display:flex;flex-direction:column;gap:0}
   footer .fbrand{order:1;text-align:center}
-  footer .fbrand .logo-img{height:32px;width:123px}
-  footer .ftag,footer .fdesc{margin-left:auto;margin-right:auto}
-  footer .fdesc{font-size:13.5px}
-  footer .socials{justify-content:center;gap:10px;margin-top:16px}
-  footer .socials a{width:40px;height:40px}
+  footer .fbrand .logo-img{height:44px;width:146px}
+  footer .ftag{font-size:21px;font-weight:700;line-height:1.3;margin:12px auto 0;max-width:330px}
+  footer .ftag::after{content:"";display:block;width:110px;height:11px;margin:5px auto 0;border-bottom:3px solid #F50707;border-radius:50%}
+  footer .fdesc{font-size:15px;line-height:1.55;color:rgba(244,242,237,.72);margin:14px auto 0;max-width:310px}
+  footer .socials{justify-content:center;gap:14px;margin-top:18px}
+  footer .socials a{width:44px;height:44px;background:rgba(244,242,237,.08)}
+  footer .socials a .icon{width:20px;height:20px}
   footer .fnews{order:2;border-left:0;padding-left:0;text-align:center;margin-top:28px}
-  footer .fnl-head{justify-content:center}
-  footer .fnl-text{margin-left:auto;margin-right:auto}
-  footer .news{margin:0 auto}
+  footer .fnl-head{justify-content:center;gap:11px}
+  footer .fnl-head .icon{width:26px;height:26px}
+  footer .fnl-head h4{font-size:24px}
+  footer .fnl-text{font-size:14.5px;color:rgba(244,242,237,.72);margin:8px auto 0}
+  footer .news{margin:16px auto 0}
+  footer .news input{height:54px;background:rgba(244,242,237,.04);padding:0 84px 0 20px;font-size:15px}
+  footer .news button{width:66px;height:44px}
+  footer .news button .icon{width:20px;height:20px}
   footer .formnote{margin-left:auto;margin-right:auto;text-align:left}
   footer .fcol{order:3;border-top:1px solid rgba(244,242,237,.12)}
   footer .fcol-first{margin-top:28px}
   footer .fcol h4{display:none}
-  footer .facc-btn{display:flex;width:100%;align-items:center;gap:12px;min-height:52px;padding:14px 2px;color:var(--on-dark);font-size:15.5px;font-weight:600;text-align:left}
-  footer .facc-btn .icon{width:20px;height:20px;color:var(--on-dark-mut)}
-  footer .facc-btn .fchev{margin-left:auto;color:var(--on-dark);transition:transform .35s ease}
+  footer .facc-btn{display:flex;width:100%;align-items:center;gap:12px;min-height:57px;padding:0 2px;color:var(--on-dark);font-size:17px;font-weight:600;text-align:left}
+  footer .facc-btn .icon{width:22px;height:22px;color:var(--on-dark)}
+  footer .facc-btn .fchev{width:18px;height:18px;margin-left:auto;color:rgba(244,242,237,.6);transition:transform .35s ease}
   footer .fcol.open .facc-btn .fchev{transform:rotate(180deg)}
   footer .facc-body{display:grid;grid-template-rows:0fr;visibility:hidden;transition:grid-template-rows .38s ease,visibility 0s linear .38s}
   footer .fcol.open .facc-body{grid-template-rows:1fr;visibility:visible;transition:grid-template-rows .38s ease}
-  footer .facc-body>ul{min-height:0;overflow:hidden;padding-bottom:12px}
+  footer .facc-body>ul{min-height:0;overflow:hidden;padding:0 0 12px 36px}
   footer .fcol ul button{font-size:14.5px;min-height:30px}
-  footer .ftrust-row{margin-top:26px;padding-top:20px}
+  footer .ftrust-row{margin-top:0;border-top:1px solid rgba(244,242,237,.12);padding-top:24px}
   footer .ftrust-row .ft-item{flex-direction:column;justify-content:flex-start;text-align:center;gap:0;padding:0 4px}
-  footer .ftrust-row .icon{width:23px;height:23px;margin-bottom:7px}
-  footer .ftrust-row .ft-l{font-size:12.5px}
-  footer .ftrust-row .ft-s{font-size:11px;line-height:1.35}
-  footer .fbot{flex-direction:column;align-items:center;text-align:center;gap:12px;margin-top:24px}
+  footer .ftrust-row .ft-item + .ft-item{border-left-color:rgba(244,242,237,.12)}
+  footer .ftrust-row .icon{width:26px;height:26px;margin-bottom:7px}
+  footer .ftrust-row .ft-l{font-size:13.5px;font-weight:700}
+  footer .ftrust-row .ft-s{font-size:11.5px;line-height:1.35;color:rgba(244,242,237,.65)}
+  footer .fbot{flex-direction:column;align-items:center;text-align:center;gap:0;border-top:0;margin-top:22px;padding:0;font-size:13.5px}
   footer .fbot .pay{order:-1}
-  footer .fbot>span{flex:none}
-  footer .fbot .links{flex:none;justify-content:center}
-  footer .paylogos{justify-content:center}
+  footer .paylogos{justify-content:center;gap:8px}
+  footer .paylogos .plogo{height:34px;border-radius:8px;padding:5px 9px}
+  footer .paylogos .plogo img{height:22px;max-height:22px}
+  footer .paylogos .plogo.cod{font-size:12.5px;padding:5px 10px}
+  footer .fbot>span{flex:none;margin-top:18px;font-size:13.5px;color:rgba(244,242,237,.8)}
+  footer .fbot .links{flex:none;justify-content:center;margin-top:12px;gap:12px}
+  footer .fbot .links button{color:var(--on-dark);font-size:13.5px}
+  footer .fsep{color:rgba(244,242,237,.35)}
 }
 </style>
 </head>
