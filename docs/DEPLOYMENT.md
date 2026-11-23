@@ -39,8 +39,15 @@ docker run --env-file .env -p 4000:4000 dostelo-api
 ```
 
 The image builds the API and its workspace dependencies,
-prunes dev dependencies, and runs as the non-root `node` user
-with a health check against `GET /health`.
+generates the Prisma client from the real schema
+(`packages/database/prisma/schema.prisma`) before the build
+and again after pruning, prunes dev dependencies, and runs
+as the non-root `node` user with a health check against
+`GET /health`. `packages/database` is copied into the runtime
+image, and the `prisma` CLI is a production dependency of
+`@dostelo/database`, because the container start command runs
+`prisma db push --skip-generate` from that package before
+starting the server (see Schema apply, below).
 
 For a production-like local stack (API plus PostgreSQL 16 and
 Redis 7 with named volumes):
@@ -50,16 +57,89 @@ docker compose up --build
 ```
 
 The API receives `DATABASE_URL` and `REDIS_URL` pointing at
-the compose services. Today the API still runs on its
-in-memory repositories, so those two services are provisioned
-for the Prisma and BullMQ swap (see
-`docs/PRISMA_MIGRATION.md`) and are not read yet.
+the compose services. With `DATABASE_URL` set, the API binds
+its Prisma repositories against PostgreSQL; with `REDIS_URL`
+set, the job queue runs on BullMQ. With either unset, the
+in-memory and in-process fallbacks bind instead, which is how
+the test suite's default mode runs (see
+`docs/PRISMA_MIGRATION.md`).
+
+### Schema apply
+
+There are no migration files in `packages/database` yet, so
+the schema is applied with `prisma db push`. The image's start
+command does this on every container start, before the server
+listens:
+
+```bash
+cd /app/packages/database && ./node_modules/.bin/prisma db push --skip-generate
+cd /app/apps/api && exec node dist/main.js
+```
+
+On a fresh, empty database this creates all 54 tables. On an
+existing database it syncs the schema forward and stops with
+an error rather than dropping data when a change would lose
+data. When real migrations are introduced later, this step
+becomes `prisma migrate deploy` and this section gets updated
+with it.
+
+### Railway route
+
+The API's chosen host is Railway, which runs the same Docker
+image:
+
+- One Railway project holding three services: the API (from
+  this repo), a PostgreSQL service and a Redis service.
+- API service settings: Root Directory stays at the
+  repository root (the Dockerfile builds from the root
+  context), Dockerfile Path is `apps/api/Dockerfile`. The
+  image sets `NODE_ENV=production` and `API_PORT=4000`
+  itself.
+- Port: the API listens on `API_PORT`, which the image fixes
+  at 4000; it does not read Railway's injected `PORT`. When
+  generating the public domain for the API service, set its
+  target port to 4000.
+- Required environment on the API service:
+  `DATABASE_URL` (reference the PostgreSQL service's
+  variable), `REDIS_URL` (reference the Redis service's
+  variable), `AUTH_SECRET` (at least 16 characters; boot
+  refuses without it), `STOREFRONT_URL` and `ADMIN_URL` (the
+  exact Vercel origins of the two apps, for the production
+  CORS allowlist), `ADMIN_SEED_EMAIL` and
+  `ADMIN_SEED_PASSWORD` (the first staff account), and
+  `API_URL` (the public Railway URL, for payment callbacks).
+  `ADMIN_SEED_ROLE` is optional and defaults to super-admin.
+- Seed behaviour: on startup the API creates the seed admin
+  only if no account with `ADMIN_SEED_EMAIL` exists yet; an
+  existing account is left untouched, so changing the seed
+  password later does not change the stored one (use the
+  admin portal for password changes). With the seed variables
+  absent, no admin exists and admin login answers that it is
+  not configured. The product catalogue is seeded the same
+  way on first boot, only while the Product table is empty.
+- After the first deploy, set `NEXT_PUBLIC_API_URL` on both
+  Vercel projects to the Railway API URL and redeploy them,
+  or the apps keep pointing at `http://localhost:4000`.
+
+This route was proven locally without Docker on 2026-11-24 by
+replaying the image's exact sequence against a fresh, empty
+PostgreSQL database: generate the client from the schema,
+`prisma db push` (54 tables created), boot with
+`NODE_ENV=production` and the variables above, then
+`GET /health` answered ok, the seeded admin signed in through
+`POST /v1/auth/admin/login` and received an access and
+refresh token pair with the super-admin role, and
+`GET /v1/catalog/products` answered with the seeded catalogue
+of 22 products.
 
 ### Plain Node route
 
 ```bash
 pnpm install --frozen-lockfile
 pnpm --filter @dostelo/api... build
+# Only when DATABASE_URL points at a real database: apply the
+# schema first, the same step the Docker start command runs.
+pnpm --filter @dostelo/database exec prisma db push --skip-generate
 NODE_ENV=production API_PORT=4000 node apps/api/dist/main.js
 ```
 
@@ -134,8 +214,11 @@ Smoke checks, in order:
 
 - Next apps: redeploy the previous Vercel deployment, or
   restart the previous Node build. The apps are stateless.
-- API: restart the previous image tag or build. The API is
-  stateless apart from its in-memory data, which does not
-  survive a restart in any version; that changes only when
-  the Prisma swap lands, after which rollbacks must also
-  respect database migrations (see `docs/PRISMA_MIGRATION.md`).
+- API: restart the previous image tag or build. With
+  `DATABASE_URL` set, the data lives in PostgreSQL and
+  survives restarts and rollbacks; keep in mind the start
+  command applies the schema of the image being started, so
+  rolling back across a schema change needs the care
+  described in `docs/PRISMA_MIGRATION.md`. In the in-memory
+  fallback mode (no `DATABASE_URL`), state still resets on
+  every restart.
