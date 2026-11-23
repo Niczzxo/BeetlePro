@@ -1,3 +1,10 @@
+import {
+  DEFAULT_DELIVERY_FEES,
+  DEFAULT_LOYALTY_RULES,
+  DEFAULT_STORE_PROFILE,
+  type DeliveryFeeSettings,
+  type LoyaltyRules,
+} from '@dostelo/types';
 import type { Tx } from '../prisma/prisma.service';
 
 export type ManualInstructions = Record<
@@ -5,13 +12,19 @@ export type ManualInstructions = Record<
   string
 >;
 
-/** The store settings the legacy site keeps in localStorage:
- * the free delivery offer switch (mirrors the admin toggle on
- * the legacy Account page, default off) and the receiving
- * instructions for manual mobile banking. */
+/** The store settings record: the free delivery offer switch and
+ * the manual mobile-banking receiving instructions from the
+ * legacy site's localStorage, plus (Website Management build)
+ * the store profile, the delivery fee table checkout charges,
+ * and the loyalty rules. One record, one seam. */
 export interface StoreSettingsData {
   freeDeliveryOffer: boolean;
   manualInstructions: ManualInstructions;
+  storeName: string;
+  contactEmail: string;
+  contactPhone: string;
+  deliveryFees: DeliveryFeeSettings;
+  loyaltyRules: LoyaltyRules;
 }
 
 /**
@@ -36,15 +49,20 @@ export const DEFAULT_MANUAL_INSTRUCTIONS: ManualInstructions = {
 export const DEFAULT_STORE_SETTINGS: StoreSettingsData = {
   freeDeliveryOffer: false,
   manualInstructions: DEFAULT_MANUAL_INSTRUCTIONS,
+  storeName: DEFAULT_STORE_PROFILE.storeName,
+  contactEmail: DEFAULT_STORE_PROFILE.contactEmail,
+  contactPhone: DEFAULT_STORE_PROFILE.contactPhone,
+  deliveryFees: DEFAULT_DELIVERY_FEES,
+  loyaltyRules: DEFAULT_LOYALTY_RULES,
 };
 
 /**
  * Store settings persistence seam (docs/PRISMA_MIGRATION.md,
- * schema gap 2). The only readers are CheckoutService (the free
- * delivery offer switch) and the manual mobile-banking provider
- * (the receiving instructions); both were rewired from reading
- * the in-memory store directly to this interface as part of the
- * Prisma swap.
+ * schema gap 2). Readers: CheckoutService (the free delivery
+ * offer switch and, since the Website Management build, the
+ * delivery fee table), the manual mobile-banking provider (the
+ * receiving instructions), the Website Management endpoints
+ * (the whole record) and the Loyalty module (the rules).
  */
 export abstract class SettingsRepository {
   abstract get(tx?: Tx): Promise<StoreSettingsData>;

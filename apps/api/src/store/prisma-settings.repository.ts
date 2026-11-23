@@ -9,6 +9,26 @@ import {
 
 const SETTINGS_ID = 'store';
 
+/** The settings fields beyond the original pair, stored as one
+ * JSON column (the recoverySettings precedent): the store
+ * profile, the delivery fee table and the loyalty rules. */
+type ExtendedSettings = Pick<
+  StoreSettingsData,
+  'storeName' | 'contactEmail' | 'contactPhone' | 'deliveryFees' | 'loyaltyRules'
+>;
+
+function extendedFrom(
+  settings: StoreSettingsData,
+): ExtendedSettings {
+  return {
+    storeName: settings.storeName,
+    contactEmail: settings.contactEmail,
+    contactPhone: settings.contactPhone,
+    deliveryFees: settings.deliveryFees,
+    loyaltyRules: settings.loyaltyRules,
+  };
+}
+
 /**
  * Prisma store settings over the StoreSettings singleton row
  * (id "store"). The row is created with the defaults on first
@@ -35,14 +55,21 @@ export class PrismaSettingsRepository extends SettingsRepository {
         freeDeliveryOffer: fallback.freeDeliveryOffer,
         manualInstructions:
           fallback.manualInstructions as Prisma.InputJsonValue,
+        extendedSettings: extendedFrom(fallback) as unknown as Prisma.InputJsonValue,
       },
       update: {},
     });
+    const extended = (row.extendedSettings as Partial<ExtendedSettings> | null) ?? {};
     return {
       freeDeliveryOffer: row.freeDeliveryOffer,
       manualInstructions:
         (row.manualInstructions as StoreSettingsData['manualInstructions']) ??
         fallback.manualInstructions,
+      storeName: extended.storeName ?? fallback.storeName,
+      contactEmail: extended.contactEmail ?? fallback.contactEmail,
+      contactPhone: extended.contactPhone ?? fallback.contactPhone,
+      deliveryFees: extended.deliveryFees ?? fallback.deliveryFees,
+      loyaltyRules: extended.loyaltyRules ?? fallback.loyaltyRules,
     };
   }
 
@@ -55,11 +82,13 @@ export class PrismaSettingsRepository extends SettingsRepository {
         freeDeliveryOffer: settings.freeDeliveryOffer,
         manualInstructions:
           settings.manualInstructions as Prisma.InputJsonValue,
+        extendedSettings: extendedFrom(settings) as unknown as Prisma.InputJsonValue,
       },
       update: {
         freeDeliveryOffer: settings.freeDeliveryOffer,
         manualInstructions:
           settings.manualInstructions as Prisma.InputJsonValue,
+        extendedSettings: extendedFrom(settings) as unknown as Prisma.InputJsonValue,
       },
     });
   }

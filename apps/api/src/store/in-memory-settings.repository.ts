@@ -12,9 +12,15 @@ export class InMemorySettingsRepository extends SettingsRepository {
   }
 
   async get(): Promise<StoreSettingsData> {
+    const settings = this.db.settings;
     return {
-      freeDeliveryOffer: this.db.settings.freeDeliveryOffer,
-      manualInstructions: { ...this.db.settings.manualInstructions },
+      freeDeliveryOffer: settings.freeDeliveryOffer,
+      manualInstructions: { ...settings.manualInstructions },
+      storeName: settings.storeName,
+      contactEmail: settings.contactEmail,
+      contactPhone: settings.contactPhone,
+      deliveryFees: { ...settings.deliveryFees },
+      loyaltyRules: { ...settings.loyaltyRules },
     };
   }
 
@@ -23,5 +29,10 @@ export class InMemorySettingsRepository extends SettingsRepository {
     this.db.settings.manualInstructions = {
       ...settings.manualInstructions,
     };
+    this.db.settings.storeName = settings.storeName;
+    this.db.settings.contactEmail = settings.contactEmail;
+    this.db.settings.contactPhone = settings.contactPhone;
+    this.db.settings.deliveryFees = { ...settings.deliveryFees };
+    this.db.settings.loyaltyRules = { ...settings.loyaltyRules };
   }
 }

@@ -3,6 +3,11 @@ import type { Money } from './money';
 export type ProductStatus = 'draft' | 'active' | 'archived';
 export type MediaType = 'image' | 'video';
 
+/** A variant at or below this many available units counts as low
+ * stock across the admin portal (inventory views, dashboard and
+ * staff notifications all use the one threshold). */
+export const LOW_STOCK_THRESHOLD = 5;
+
 export interface Category {
   id: string;
   slug: string;

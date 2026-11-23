@@ -4,6 +4,7 @@ import type {
   AbandonedCart,
   AdminRole,
   AuditLogEntry,
+  Campaign,
   Cart,
   Category,
   CommunicationLog,
@@ -11,24 +12,40 @@ import type {
   Courier,
   Customer,
   CustomerNote,
+  DataExportRecord,
   FollowUpTask,
   IdentityLink,
   Lead,
   LeadContactAttempt,
+  LegalDocument,
+  LoyaltyTransaction,
   Order,
   OrderStatus,
   Payment,
   PaymentEvent,
   Product,
+  ProductReview,
   RecoveryAttempt,
   RecoverySettings,
   Refund,
+  ReturnRequest,
   Shipment,
   ShipmentStatusEvent,
+  SupportTicket,
+  SupportTicketMessage,
   VisitorEvent,
   VisitorSession,
   WebhookEvent,
 } from '@dostelo/types';
+
+/** A notification read mark (Notifications build), mirroring the
+ * NotificationRead model: staff notification keys a staff member
+ * has marked read. */
+export interface NotificationReadRecord {
+  adminUserId: string;
+  notificationKey: string;
+  readAt: string;
+}
 
 /** A customer record as stored, including the password hash. The
  * public Customer type never carries the hash; services strip it. */
@@ -217,7 +234,11 @@ export class InMemoryDatabase {
   readonly courierWebhookEvents = new Map<string, CourierWebhookRecord>();
   /** Storefront settings that the legacy site keeps in localStorage.
    * The free delivery offer switch mirrors the admin toggle on the
-   * legacy Account page and defaults to off, as there. */
+   * legacy Account page and defaults to off, as there. The record
+   * also carries the store profile, the delivery fee table and
+   * the loyalty rules (Website Management and Loyalty builds);
+   * the defaults are DEFAULT_STORE_SETTINGS in
+   * settings.repository.ts. */
   readonly settings = {
     freeDeliveryOffer: false,
     /**
@@ -227,5 +248,40 @@ export class InMemoryDatabase {
      * the in-memory store and the database seed share one text.
      */
     manualInstructions: { ...DEFAULT_MANUAL_INSTRUCTIONS },
+    storeName: 'Dostelo',
+    contactEmail: 'hello@dostelo.example',
+    contactPhone: '',
+    deliveryFees: {
+      dhakaCityMinor: 7000,
+      dhakaSubCityMinor: 10000,
+      outsideDhakaMinor: 15000,
+      codFeeMinor: 1000,
+    },
+    loyaltyRules: { takaPerPoint: 100, pointValueMinor: 100 },
   };
+  /** Return and exchange requests (Returns build), keyed by id. */
+  readonly returnRequests = new Map<string, ReturnRequest>();
+  /** Support tickets (Support build), keyed by ticket id. */
+  readonly supportTickets = new Map<string, SupportTicket>();
+  /** Support ticket messages, append-only, in write order. */
+  readonly supportTicketMessages: SupportTicketMessage[] = [];
+  /** Product reviews (Reviews build), keyed by review id. */
+  readonly productReviews = new Map<string, ProductReview>();
+  /** Marketing campaigns (Marketing build), keyed by campaign id. */
+  readonly campaigns = new Map<string, Campaign>();
+  /** Loyalty point adjustments (Loyalty build), append-only.
+   * Earned points are derived from delivered orders, never
+   * stored; only staff adjustments live here. */
+  readonly loyaltyTransactions: LoyaltyTransaction[] = [];
+  /** Legal documents (Legal build), keyed by document slug. Only
+   * documents staff have saved exist here; the service serves
+   * the label defaults for the rest. */
+  readonly legalDocuments = new Map<string, LegalDocument>();
+  /** Notification read marks (Notifications build), append-only:
+   * one entry per (admin user, notification key) marked read. */
+  readonly notificationReads: NotificationReadRecord[] = [];
+  /** Data export records (Backup build), keyed by export id. The
+   * record keeps counts only; the export document itself is
+   * returned to the requester and never stored. */
+  readonly dataExports = new Map<string, DataExportRecord>();
 }

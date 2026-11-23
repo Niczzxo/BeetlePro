@@ -6,12 +6,11 @@ import {
 } from '@nestjs/common';
 import { randomInt, randomUUID } from 'node:crypto';
 import {
-  COD_FEE_MINOR,
-  DELIVERY_ZONE_FEE_MINOR,
   DELIVERY_ZONE_LABELS,
   money,
   type CheckoutQuote,
   type CheckoutQuoteLine,
+  type DeliveryZone,
   type Order,
 } from '@dostelo/types';
 import type { CheckoutRequest } from '@dostelo/validation';
@@ -168,10 +167,19 @@ export class CheckoutService {
       .filter(Boolean)
       .join(' ');
     const zone = detectZone(dto.address.district, addressText);
-    const zoneFeeMinor = zone ? DELIVERY_ZONE_FEE_MINOR[zone] : 0;
 
     const orderCount = await this.orderCountFor(dto);
     const settings = await this.settings.get();
+    /** The fee table lives in the store settings (Website
+     * Management); its defaults are the live 70 / 100 / 150 taka
+     * zone fees and the 10 taka COD fee. */
+    const zoneFeeMinor = zone
+      ? {
+          'dhaka-city': settings.deliveryFees.dhakaCityMinor,
+          'dhaka-sub-city': settings.deliveryFees.dhakaSubCityMinor,
+          'outside-dhaka': settings.deliveryFees.outsideDhakaMinor,
+        }[zone as DeliveryZone]
+      : 0;
     let freeDeliveryReason: CheckoutQuote['freeDeliveryReason'] = null;
     if (settings.freeDeliveryOffer) {
       freeDeliveryReason = 'admin-offer';
@@ -181,7 +189,7 @@ export class CheckoutService {
     const freeDelivery = freeDeliveryReason !== null;
     const deliveryFeeMinor = freeDelivery ? 0 : zoneFeeMinor;
     const codFeeMinor =
-      dto.paymentMethod === 'cod' ? COD_FEE_MINOR : 0;
+      dto.paymentMethod === 'cod' ? settings.deliveryFees.codFeeMinor : 0;
 
     return {
       zone,
