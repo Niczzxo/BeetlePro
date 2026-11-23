@@ -1,0 +1,67 @@
+# Production-like local stack for the Dostelo API.
+#
+#   docker compose up --build
+#
+# Honest status: the API currently runs on its in-memory
+# repositories, so today it does not read from PostgreSQL or
+# Redis yet. Both are provisioned here so the Prisma and
+# BullMQ swap (docs/PRISMA_MIGRATION.md) lands on a stack that
+# already matches production shape. The API container receives
+# DATABASE_URL and REDIS_URL pointing at the services below.
+#
+# Secrets come from a local .env file (never committed) or the
+# shell environment. The API refuses to boot in production
+# without AUTH_SECRET, by design.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-dostelo}
+      POSTGRES_USER: ${POSTGRES_USER:-dostelo}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dostelo-local-only}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-dostelo} -d ${POSTGRES_DB:-dostelo}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      NODE_ENV: production
+      API_PORT: "4000"
+      DATABASE_URL: postgres://${POSTGRES_USER:-dostelo}:${POSTGRES_PASSWORD:-dostelo-local-only}@postgres:5432/${POSTGRES_DB:-dostelo}
+      REDIS_URL: redis://redis:6379
+    ports:
+      - "4000:4000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  redisdata:
