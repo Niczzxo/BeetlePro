@@ -5,9 +5,9 @@ import type { PermissionKey } from '@dostelo/types';
  * structure's sidebar order. `permission` is the view permission
  * for the module: the sidebar hides items the signed-in role
  * cannot view, and the API enforces the same keys server-side.
- * `functional` marks the modules wired to the live API in this
- * chunk; the rest render honest structure pages (purpose and
- * roadmap phase) until their phase builds them.
+ * `functional` marks the modules wired to the live API; all 25
+ * modules are wired. A module whose page performs only honest
+ * structure rendering would stay false here.
  */
 export interface AdminModule {
   label: string;
@@ -106,9 +106,9 @@ export const ADMIN_MODULES: AdminModule[] = [
     href: '/inventory',
     slug: 'inventory',
     permission: 'inventory.read',
-    functional: false,
+    functional: true,
     purpose:
-      'Dedicated stock and warehouse management. In this chunk, stock is viewed and adjusted from the Products module; the standalone warehouse views land later in Phase 4.',
+      'Stock levels per variant with on-hand, reserved and available counts, a low-stock view, and audited stock adjustments.',
     phase: 'Phase 4',
   },
   {
@@ -136,7 +136,7 @@ export const ADMIN_MODULES: AdminModule[] = [
     href: '/returns',
     slug: 'returns',
     permission: 'orders.read',
-    functional: false,
+    functional: true,
     purpose:
       'Returns and exchange intake, inspection outcomes and refund hand-off to Payments.',
     phase: 'Phase 4',
@@ -146,8 +146,9 @@ export const ADMIN_MODULES: AdminModule[] = [
     href: '/marketing',
     slug: 'marketing',
     permission: 'marketing.read',
-    functional: false,
-    purpose: 'Campaigns, coupons and promotions, with attribution.',
+    functional: true,
+    purpose:
+      'Campaign records with draft and scheduled states. Sending follows each channel provider configuration and is reported honestly per campaign.',
     phase: 'Phase 4',
   },
   {
@@ -155,7 +156,7 @@ export const ADMIN_MODULES: AdminModule[] = [
     href: '/automation',
     slug: 'automation',
     permission: 'settings.manage',
-    functional: false,
+    functional: true,
     purpose:
       'Background automations: recovery workers, notification triggers and scheduled jobs.',
     phase: 'Phase 6',
@@ -165,7 +166,7 @@ export const ADMIN_MODULES: AdminModule[] = [
     href: '/support',
     slug: 'support',
     permission: 'customers.read',
-    functional: false,
+    functional: true,
     purpose:
       'Support inbox and case handling tied to customer and order records.',
     phase: 'Phase 5',
@@ -175,7 +176,7 @@ export const ADMIN_MODULES: AdminModule[] = [
     href: '/reviews',
     slug: 'reviews',
     permission: 'marketing.read',
-    functional: false,
+    functional: true,
     purpose: 'Product reviews, moderation and store reputation signals.',
     phase: 'Phase 4',
   },
@@ -184,8 +185,9 @@ export const ADMIN_MODULES: AdminModule[] = [
     href: '/loyalty',
     slug: 'loyalty',
     permission: 'marketing.read',
-    functional: false,
-    purpose: 'Loyalty points, tiers and reward campaigns.',
+    functional: true,
+    purpose:
+      'Loyalty points: the earn rules, per-customer balances derived from delivered orders, and audited manual adjustments.',
     phase: 'Phase 6',
   },
   {
@@ -193,9 +195,9 @@ export const ADMIN_MODULES: AdminModule[] = [
     href: '/reports',
     slug: 'reports',
     permission: 'reports.read',
-    functional: false,
+    functional: true,
     purpose:
-      'Sales, product and customer reports with exports. The Dashboard carries the headline numbers in this chunk.',
+      'Sales by day, top products, delivery zone split, payment method split and cart recovery performance, aggregated live from the orders, payments and recovery stores.',
     phase: 'Phase 4',
   },
   {
@@ -203,9 +205,9 @@ export const ADMIN_MODULES: AdminModule[] = [
     href: '/website',
     slug: 'website',
     permission: 'settings.manage',
-    functional: false,
+    functional: true,
     purpose:
-      'Storefront content management: banners, pages and store settings such as the free delivery offer switch.',
+      'Store settings: store name and contact details, the delivery fee table checkout charges, the free delivery offer switch, and manual payment instructions.',
     phase: 'Phase 4',
   },
   {
@@ -213,8 +215,9 @@ export const ADMIN_MODULES: AdminModule[] = [
     href: '/notifications',
     slug: 'notifications',
     permission: 'settings.manage',
-    functional: false,
-    purpose: 'Staff and customer notification templates and delivery logs.',
+    functional: true,
+    purpose:
+      'Staff notification feed derived from pending orders, low stock and abandoned cart detections, with per-staff read state.',
     phase: 'Phase 6',
   },
   {
@@ -222,9 +225,9 @@ export const ADMIN_MODULES: AdminModule[] = [
     href: '/staff',
     slug: 'staff',
     permission: 'staff.manage',
-    functional: false,
+    functional: true,
     purpose:
-      'Staff accounts and role assignment. Accounts are seeded from the environment in this chunk; the management UI lands later in Phase 4. The roles matrix itself is live under Security & Access.',
+      'Staff accounts and role assignment: invite by creating an account with a temporary password, deactivate accounts and force logout by revoking sessions. The roles matrix itself is live under Security & Access.',
     phase: 'Phase 4',
   },
   {
@@ -242,7 +245,7 @@ export const ADMIN_MODULES: AdminModule[] = [
     href: '/integrations',
     slug: 'integrations',
     permission: 'settings.manage',
-    functional: false,
+    functional: true,
     purpose:
       'Connected services: payment gateways, couriers, WhatsApp and email providers, with credential status.',
     phase: 'Phase 6',
@@ -252,9 +255,9 @@ export const ADMIN_MODULES: AdminModule[] = [
     href: '/legal',
     slug: 'legal',
     permission: 'settings.manage',
-    functional: false,
+    functional: true,
     purpose:
-      'Privacy notice, consent records, data retention and deletion handling.',
+      'Editable legal documents (privacy, terms, returns, refund, shipping, warranty) stored in the API. The storefront still serves its ported policy text; wiring it to these documents is pending.',
     phase: 'Phase 7',
   },
   {
@@ -262,8 +265,9 @@ export const ADMIN_MODULES: AdminModule[] = [
     href: '/backup',
     slug: 'backup',
     permission: 'settings.manage',
-    functional: false,
-    purpose: 'Backup status, restore drills and maintenance windows.',
+    functional: true,
+    purpose:
+      'On-demand JSON data exports of the platform core stores, with a recorded export history. No external backup storage is connected.',
     phase: 'Phase 7',
   },
 ];
