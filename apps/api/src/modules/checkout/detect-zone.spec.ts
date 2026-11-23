@@ -32,6 +32,19 @@ describe('detectZone (ported from the storefront)', () => {
     expect(detectZone('', 'কেরানীগঞ্জ')).toBe('dhaka-sub-city');
   });
 
+  it('detects the four Bangla sub city names the legacy regex missed', () => {
+    /* The legacy sub city alternation listed only four of the eight
+       Bangla spellings, so these addresses fell through to outside
+       Dhaka (150) instead of sub city (100). The live site fix added
+       them; each name is exercised on its own, and Tongi is also
+       checked alongside a Dhaka district (sub city checked first). */
+    expect(detectZone('', 'টঙ্গী')).toBe('dhaka-sub-city');
+    expect(detectZone('ঢাকা', 'টঙ্গী স্টেশন রোড')).toBe('dhaka-sub-city');
+    expect(detectZone('', 'আশুলিয়া')).toBe('dhaka-sub-city');
+    expect(detectZone('', 'ধামরাই')).toBe('dhaka-sub-city');
+    expect(detectZone('', 'ডেমরা')).toBe('dhaka-sub-city');
+  });
+
   it('treats any other district as outside Dhaka', () => {
     expect(detectZone('Sylhet', 'Zindabazar, Sylhet')).toBe(
       'outside-dhaka',

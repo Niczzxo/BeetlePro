@@ -19,7 +19,7 @@
 export type DeliveryZone = 'dhaka' | 'subcity' | 'outside';
 
 const SUBCITY_RE =
-  /gazipur|tongi|narayanganj|savar|ashulia|keraniganj|dhamrai|demra|গাজীপুর|নারায়ণগঞ্জ|সাভার|কেরানীগঞ্জ/i;
+  /gazipur|tongi|narayanganj|savar|ashulia|keraniganj|dhamrai|demra|গাজীপুর|টঙ্গী|নারায়ণগঞ্জ|সাভার|আশুলিয়া|কেরানীগঞ্জ|ধামরাই|ডেমরা/i;
 const DHAKA_RE = /dhaka|ঢাকা/i;
 
 /** The legacy detectZone(): city is the district field, addr is

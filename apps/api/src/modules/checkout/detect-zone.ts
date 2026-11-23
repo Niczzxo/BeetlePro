@@ -19,7 +19,7 @@ import type { DeliveryZone } from '@dostelo/types';
  * @dostelo/types (7000 / 10000 / 15000 minor units).
  */
 const SUBCITY_RE =
-  /gazipur|tongi|narayanganj|savar|ashulia|keraniganj|dhamrai|demra|গাজীপুর|নারায়ণগঞ্জ|সাভার|কেরানীগঞ্জ/i;
+  /gazipur|tongi|narayanganj|savar|ashulia|keraniganj|dhamrai|demra|গাজীপুর|টঙ্গী|নারায়ণগঞ্জ|সাভার|আশুলিয়া|কেরানীগঞ্জ|ধামরাই|ডেমরা/i;
 const DHAKA_RE = /dhaka|ঢাকা/i;
 
 /** district is the district field, addr is the full address text. */
