@@ -4,6 +4,9 @@ import type {
   AdminLoginResult,
   AuditLogEntry,
   AuthTokens,
+  AutomationInfo,
+  CampaignStatus,
+  CampaignView,
   CartView,
   Category,
   CheckoutQuote,
@@ -14,23 +17,41 @@ import type {
   Courier,
   Customer,
   CustomerNote,
+  DataExportRecord,
+  DataExportResult,
   FollowUpTask,
   IdentityStatus,
+  IntegrationStatus,
   Lead,
   LeadContactAttempt,
   LeadStatus,
+  LegalDocument,
+  LoyaltyBalance,
+  LoyaltyRules,
+  LoyaltyTransaction,
   Order,
   OrderStatus,
   Payment,
   PaymentEvent,
   Product,
+  ProductReview,
   RecoveryAttempt,
   RecoveryCartView,
   RecoverySettings,
   Refund,
+  ReportsSummary,
+  ReturnRequest,
+  ReturnStatus,
+  ReviewStatus,
   Shipment,
   ShipmentDetail,
   ShipmentStatus,
+  StaffMemberView,
+  StaffNotification,
+  StoreSettingsView,
+  SupportTicket,
+  SupportTicketDetail,
+  SupportTicketStatus,
   VisitorEventType,
 } from '@dostelo/types';
 import type {
@@ -41,7 +62,12 @@ import type {
   CheckoutRequest,
   ConsentRecordInput,
   ContactAttemptCreate,
+  CreateCampaign,
+  CreateReturn,
+  CreateReview,
   CreateShipment,
+  CreateStaff,
+  CreateSupportTicket,
   CustomerLogin,
   CustomerNoteCreate,
   CustomerRegistration,
@@ -51,14 +77,25 @@ import type {
   LeadAssign,
   LeadCreate,
   LeadStatusChange,
+  LegalDocumentUpdate,
+  LoyaltyAdjust,
+  LoyaltyRulesUpdate,
   ManualCallLog,
   MfaExchange,
+  NotificationMarkRead,
   OrderStatusTransition,
   PaymentVerify,
   RecoverySettingsUpdate,
   RefundConfirm,
   RefundRequest,
+  ReviewStatusUpdate,
+  StaffRolesUpdate,
+  StoreSettingsUpdate,
+  SupportTicketAssign,
+  SupportTicketReply,
+  SupportTicketStatusUpdate,
   TotpCode,
+  UpdateCampaign,
   VisitorEventIngest,
   VisitorLinkInput,
 } from '@dostelo/validation';
@@ -196,6 +233,21 @@ export type ShipmentDetailView = ShipmentDetail;
 export interface ShipmentRefreshView extends ShipmentDetail {
   refreshed: boolean;
   refreshNote: string | null;
+}
+
+/** Staff notification feed from GET /v1/admin/notifications:
+ * derived items plus the caller's unread count. */
+export interface NotificationFeedView {
+  items: StaffNotification[];
+  unread: number;
+}
+
+/** Answer of POST /v1/admin/returns/:id/refund: the updated
+ * return plus the Payments refund id when one was created
+ * (null when the refund was already settled or not needed). */
+export interface ReturnRefundHandOffView {
+  request: ReturnRequest;
+  refundId: string | null;
 }
 
 export interface ApiClientOptions {
@@ -738,6 +790,319 @@ export function createApiClient(options: ApiClientOptions) {
         'POST',
         `/v1/shipping/${encodeURIComponent(id)}/refresh`,
       );
+    },
+
+    // Returns and Exchanges (staff; reads need orders.read,
+    // actions need orders.edit, the refund hand-off needs
+    // payments.refund). Approving restocks the returned units;
+    // the refund itself is created in Payments by the hand-off.
+    listReturns(filter?: {
+      status?: ReturnStatus;
+      orderNumber?: string;
+    }): Promise<{ items: ReturnRequest[] }> {
+      const params = new URLSearchParams();
+      if (filter?.status) params.set('status', filter.status);
+      if (filter?.orderNumber) params.set('orderNumber', filter.orderNumber);
+      const suffix = params.toString() ? `?${params.toString()}` : '';
+      return request('GET', `/v1/admin/returns${suffix}`);
+    },
+    getReturn(id: string): Promise<ReturnRequest> {
+      return request('GET', `/v1/admin/returns/${encodeURIComponent(id)}`);
+    },
+    createReturn(dto: CreateReturn): Promise<ReturnRequest> {
+      return request('POST', '/v1/admin/returns', dto);
+    },
+    approveReturn(id: string): Promise<ReturnRequest> {
+      return request(
+        'POST',
+        `/v1/admin/returns/${encodeURIComponent(id)}/approve`,
+      );
+    },
+    rejectReturn(id: string): Promise<ReturnRequest> {
+      return request(
+        'POST',
+        `/v1/admin/returns/${encodeURIComponent(id)}/reject`,
+      );
+    },
+    handOffReturnRefund(id: string): Promise<ReturnRefundHandOffView> {
+      return request(
+        'POST',
+        `/v1/admin/returns/${encodeURIComponent(id)}/refund`,
+      );
+    },
+    completeReturn(id: string): Promise<ReturnRequest> {
+      return request(
+        'POST',
+        `/v1/admin/returns/${encodeURIComponent(id)}/complete`,
+      );
+    },
+
+    // Customer Support (staff; reads need customers.read, writes
+    // need customers.edit). Tickets are staff-created records of
+    // contacts that arrived outside the storefront.
+    listSupportTickets(filter?: {
+      status?: SupportTicketStatus;
+      customerId?: string;
+      assignedToId?: string;
+    }): Promise<{ items: SupportTicket[] }> {
+      const params = new URLSearchParams();
+      for (const [key, value] of Object.entries(filter ?? {})) {
+        if (value !== undefined) params.set(key, String(value));
+      }
+      const suffix = params.toString() ? `?${params.toString()}` : '';
+      return request('GET', `/v1/admin/support-tickets${suffix}`);
+    },
+    getSupportTicket(id: string): Promise<SupportTicketDetail> {
+      return request(
+        'GET',
+        `/v1/admin/support-tickets/${encodeURIComponent(id)}`,
+      );
+    },
+    createSupportTicket(
+      dto: CreateSupportTicket,
+    ): Promise<SupportTicketDetail> {
+      return request('POST', '/v1/admin/support-tickets', dto);
+    },
+    replySupportTicket(
+      id: string,
+      dto: SupportTicketReply,
+    ): Promise<SupportTicketDetail> {
+      return request(
+        'POST',
+        `/v1/admin/support-tickets/${encodeURIComponent(id)}/reply`,
+        dto,
+      );
+    },
+    setSupportTicketStatus(
+      id: string,
+      dto: SupportTicketStatusUpdate,
+    ): Promise<SupportTicketDetail> {
+      return request(
+        'POST',
+        `/v1/admin/support-tickets/${encodeURIComponent(id)}/status`,
+        dto,
+      );
+    },
+    assignSupportTicket(
+      id: string,
+      dto: SupportTicketAssign,
+    ): Promise<SupportTicketDetail> {
+      return request(
+        'POST',
+        `/v1/admin/support-tickets/${encodeURIComponent(id)}/assign`,
+        dto,
+      );
+    },
+
+    // Reviews moderation (staff; marketing.read and
+    // marketing.edit). Reviews are staff-entered; the source
+    // field says whether a delivered order backs the review.
+    listReviews(filter?: {
+      productId?: string;
+      status?: ReviewStatus;
+    }): Promise<{ items: ProductReview[] }> {
+      const params = new URLSearchParams();
+      for (const [key, value] of Object.entries(filter ?? {})) {
+        if (value !== undefined) params.set(key, String(value));
+      }
+      const suffix = params.toString() ? `?${params.toString()}` : '';
+      return request('GET', `/v1/admin/reviews${suffix}`);
+    },
+    createReview(dto: CreateReview): Promise<ProductReview> {
+      return request('POST', '/v1/admin/reviews', dto);
+    },
+    setReviewStatus(
+      id: string,
+      dto: ReviewStatusUpdate,
+    ): Promise<ProductReview> {
+      return request(
+        'POST',
+        `/v1/admin/reviews/${encodeURIComponent(id)}/status`,
+        dto,
+      );
+    },
+
+    // Marketing campaigns (staff; marketing.read and
+    // marketing.edit). Campaigns are records with draft and
+    // scheduled states; the view's sending state mirrors the
+    // channel provider configuration and is never faked.
+    listCampaigns(filter?: {
+      status?: CampaignStatus;
+    }): Promise<{ items: CampaignView[] }> {
+      const suffix = filter?.status
+        ? `?status=${encodeURIComponent(filter.status)}`
+        : '';
+      return request('GET', `/v1/admin/campaigns${suffix}`);
+    },
+    getCampaign(id: string): Promise<CampaignView> {
+      return request('GET', `/v1/admin/campaigns/${encodeURIComponent(id)}`);
+    },
+    createCampaign(dto: CreateCampaign): Promise<CampaignView> {
+      return request('POST', '/v1/admin/campaigns', dto);
+    },
+    updateCampaign(
+      id: string,
+      dto: UpdateCampaign,
+    ): Promise<CampaignView> {
+      return request(
+        'PATCH',
+        `/v1/admin/campaigns/${encodeURIComponent(id)}`,
+        dto,
+      );
+    },
+
+    // Loyalty (staff; marketing.read and marketing.edit).
+    // Balances derive from delivered orders at the stored rules
+    // plus recorded adjustments; nothing is stored per balance.
+    getLoyaltyRules(): Promise<LoyaltyRules> {
+      return request('GET', '/v1/admin/loyalty/rules');
+    },
+    updateLoyaltyRules(dto: LoyaltyRulesUpdate): Promise<LoyaltyRules> {
+      return request('PUT', '/v1/admin/loyalty/rules', dto);
+    },
+    listLoyaltyBalances(): Promise<{ items: LoyaltyBalance[] }> {
+      return request('GET', '/v1/admin/loyalty/customers');
+    },
+    getLoyaltyBalance(customerId: string): Promise<LoyaltyBalance> {
+      return request(
+        'GET',
+        `/v1/admin/loyalty/customers/${encodeURIComponent(customerId)}`,
+      );
+    },
+    listLoyaltyTransactions(
+      customerId: string,
+    ): Promise<{ items: LoyaltyTransaction[] }> {
+      return request(
+        'GET',
+        `/v1/admin/loyalty/customers/${encodeURIComponent(customerId)}/transactions`,
+      );
+    },
+    adjustLoyalty(
+      customerId: string,
+      dto: LoyaltyAdjust,
+    ): Promise<LoyaltyBalance> {
+      return request(
+        'POST',
+        `/v1/admin/loyalty/customers/${encodeURIComponent(customerId)}/adjust`,
+        dto,
+      );
+    },
+
+    // Reports (staff; reports.read). Read-only aggregation over
+    // orders, payments and recovery records.
+    getReportsSummary(query?: {
+      from?: string;
+      to?: string;
+    }): Promise<ReportsSummary> {
+      const params = new URLSearchParams();
+      if (query?.from) params.set('from', query.from);
+      if (query?.to) params.set('to', query.to);
+      const suffix = params.toString() ? `?${params.toString()}` : '';
+      return request('GET', `/v1/admin/reports/summary${suffix}`);
+    },
+
+    // Website store settings (staff; settings.manage). The
+    // delivery fee table saved here is the table checkout
+    // charges.
+    getStoreSettings(): Promise<StoreSettingsView> {
+      return request('GET', '/v1/admin/store-settings');
+    },
+    updateStoreSettings(
+      dto: StoreSettingsUpdate,
+    ): Promise<StoreSettingsView> {
+      return request('PUT', '/v1/admin/store-settings', dto);
+    },
+
+    // Staff notifications (staff; settings.manage). The feed is
+    // derived from live orders, stock and recovery records;
+    // only the per-staff read marks are stored.
+    getNotificationFeed(): Promise<NotificationFeedView> {
+      return request('GET', '/v1/admin/notifications');
+    },
+    markNotificationsRead(
+      dto: NotificationMarkRead,
+    ): Promise<{ marked: number }> {
+      return request('POST', '/v1/admin/notifications/read', dto);
+    },
+
+    // Staff and Admin Users (staff; staff.manage). Views never
+    // carry password hashes or MFA secrets.
+    listStaff(): Promise<{ items: StaffMemberView[] }> {
+      return request('GET', '/v1/admin/staff');
+    },
+    createStaff(dto: CreateStaff): Promise<StaffMemberView> {
+      return request('POST', '/v1/admin/staff', dto);
+    },
+    setStaffRoles(
+      id: string,
+      dto: StaffRolesUpdate,
+    ): Promise<StaffMemberView> {
+      return request(
+        'POST',
+        `/v1/admin/staff/${encodeURIComponent(id)}/roles`,
+        dto,
+      );
+    },
+    deactivateStaff(id: string): Promise<StaffMemberView> {
+      return request(
+        'POST',
+        `/v1/admin/staff/${encodeURIComponent(id)}/deactivate`,
+      );
+    },
+    activateStaff(id: string): Promise<StaffMemberView> {
+      return request(
+        'POST',
+        `/v1/admin/staff/${encodeURIComponent(id)}/activate`,
+      );
+    },
+    revokeStaffSessions(id: string): Promise<{ revoked: number }> {
+      return request(
+        'POST',
+        `/v1/admin/staff/${encodeURIComponent(id)}/revoke-sessions`,
+      );
+    },
+
+    // Integrations (staff; settings.manage). Read-only status
+    // board: configuration state and missing variable names
+    // only, never secret values.
+    listIntegrations(): Promise<{ items: IntegrationStatus[] }> {
+      return request('GET', '/v1/admin/integrations');
+    },
+
+    // Legal pages (staff; settings.manage). Stored documents;
+    // the storefront still serves its ported policy text until
+    // it is wired to read these.
+    listLegalDocuments(): Promise<{ items: LegalDocument[] }> {
+      return request('GET', '/v1/admin/legal');
+    },
+    getLegalDocument(slug: string): Promise<LegalDocument> {
+      return request('GET', `/v1/admin/legal/${encodeURIComponent(slug)}`);
+    },
+    updateLegalDocument(
+      slug: string,
+      dto: LegalDocumentUpdate,
+    ): Promise<LegalDocument> {
+      return request(
+        'PUT',
+        `/v1/admin/legal/${encodeURIComponent(slug)}`,
+        dto,
+      );
+    },
+
+    // Backup and Data (staff; settings.manage). Exports are
+    // produced on demand by the API and downloaded by the
+    // caller; the history lists past export records.
+    listBackups(): Promise<{ items: DataExportRecord[] }> {
+      return request('GET', '/v1/admin/backups');
+    },
+    createBackup(): Promise<DataExportResult> {
+      return request('POST', '/v1/admin/backups');
+    },
+
+    // Automation (staff; settings.manage). A read-only inventory
+    // of the automations that actually run, with live settings.
+    listAutomations(): Promise<{ items: AutomationInfo[] }> {
+      return request('GET', '/v1/admin/automation');
     },
   };
 }
