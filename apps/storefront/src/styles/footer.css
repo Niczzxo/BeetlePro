@@ -164,6 +164,18 @@ footer .fsep{color:rgba(244,242,237,.32)}
 .scrim{visibility:hidden;transition:opacity .35s,visibility 0s linear .35s}
 .scrim.on{visibility:visible;transition:opacity .35s}
 
+/* The same delayed visibility pattern for the bag drawer panel
+   itself, synced from the live site: in the live file the .drawer
+   rule carries visibility:hidden with the visibility flip delayed
+   until the .45s slide out ends (and .drawer.on is visible with
+   the plain slide transition), so the closed panel and its shadow
+   leave the rendering tree entirely instead of sitting off screen
+   to the right. Here the base .drawer rule sits in the frozen
+   legacy.css, so the pattern is applied as an override, exactly
+   like the .scrim override above. */
+.drawer{visibility:hidden;transition:transform .45s cubic-bezier(.22,.8,.3,1),visibility 0s linear .45s}
+.drawer.on{visibility:visible;transition:transform .45s cubic-bezier(.22,.8,.3,1)}
+
 /* Off-screen animation pause, synced from the live site: the
    RevealSystem observer toggles .anim-off on each section and the
    hero block while it is out of view. In the live file this rule

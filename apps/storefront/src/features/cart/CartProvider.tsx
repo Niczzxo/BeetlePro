@@ -231,11 +231,20 @@ export default function CartProvider({ children }: { children: ReactNode }) {
     [add, toast],
   );
 
+  /* The drawer steppers (the legacy [data-dq] handler). The legacy
+     raised the quantity without bound, past the product's stock;
+     the live fix clamps an increase at the stock cap, the same
+     Math.max(1, stock) cap add() applies above. */
   const changeQty = useCallback((key: string, delta: number) => {
     setBag((prev) => {
       if (!(key in prev)) return prev;
       const next = { ...prev };
       next[key] += delta;
+      if (delta > 0) {
+        const p = byId(key.split('~')[0]);
+        const cap = p ? Math.max(1, p.stock) : next[key];
+        if (next[key] > cap) next[key] = cap;
+      }
       if (next[key] <= 0) delete next[key];
       return next;
     });
