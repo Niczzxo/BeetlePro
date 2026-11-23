@@ -16,6 +16,7 @@
      product description.
    - article: "<title> | Dostelo Journal" with the lead. */
 
+import type { Metadata } from 'next';
 import { money } from './format';
 import type { StorefrontArticle, StorefrontProduct } from '../data/products';
 
@@ -23,6 +24,18 @@ export interface SeoPair {
   title: string;
   desc: string;
 }
+
+/* Social share image. The legacy applySEO() once overwrote
+   og:image and twitter:image with the IM33 hero photo as an
+   inline data URI, which no crawler can use; the live fix builds
+   them as a real URL instead (SITE_URL + 'assets/demo-hero.jpg').
+   The port's equivalent: this app's production origin plus the
+   same hero photo as served from its public folder
+   (/images/hero-1.jpg, the extracted IM33, whose alt text below
+   is the live og:image:alt verbatim). Never a data URI. */
+export const SITE_URL = 'https://dostelo-one.vercel.app';
+export const OG_IMAGE_URL = SITE_URL + '/images/hero-1.jpg';
+export const OG_IMAGE_ALT = 'Boys printed cotton shirt - DOSTELO';
 
 export const SEO_PAGES: Record<string, SeoPair> = {
   home: {
@@ -103,7 +116,25 @@ export function articleSeo(a: StorefrontArticle): SeoPair {
   return { title: a.title + ' | Dostelo Journal', desc: a.lead };
 }
 
-/** Shape a pair as Next metadata. */
-export function seoMetadata(pair: SeoPair): { title: string; description: string } {
-  return { title: pair.title, description: pair.desc };
+/** Shape a pair as Next metadata. The legacy applySEO() also
+    rewrote og:title, og:description, twitter:title and
+    twitter:description per view and pointed og:image and
+    twitter:image at the one share image, so the pair carries
+    those here too. */
+export function seoMetadata(pair: SeoPair): Metadata {
+  return {
+    title: pair.title,
+    description: pair.desc,
+    openGraph: {
+      title: pair.title,
+      description: pair.desc,
+      images: [{ url: OG_IMAGE_URL, alt: OG_IMAGE_ALT }],
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title: pair.title,
+      description: pair.desc,
+      images: [OG_IMAGE_URL],
+    },
+  };
 }

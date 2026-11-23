@@ -14,16 +14,34 @@ import ModalProvider from '../features/modals/Modals';
 import ToastProvider from '../features/toast/Toast';
 import Tracker from '../features/tracking/Tracker';
 import NavSystem from '../components/shell/NavSystem';
+import { OG_IMAGE_ALT, OG_IMAGE_URL, SITE_URL } from '../lib/seo';
 
 /* The legacy <title> and meta description for the home view.
    Every route carries its own legacy SEO_PAGES pair (or the
    applySEO() dynamic rule for shop, product and article) as
-   static metadata; see src/lib/seo.ts. */
+   static metadata; see src/lib/seo.ts. The Open Graph and
+   Twitter blocks mirror the legacy head and applySEO(): the
+   share image is the real URL from src/lib/seo.ts, never the
+   data URI the legacy once wrote. */
 export const metadata: Metadata = {
+  metadataBase: new URL(SITE_URL),
   title: 'Dostelo - Boys Clothing in Bangladesh | Shirts, Tees, Pants & Belts',
   description:
     'DOSTELO is a boys clothing store in Bangladesh - shirts, t-shirts, polos, pants, jeans, belts and accessories in honest fabrics and fair taka prices. Cash on Delivery, bKash, Nagad, Rocket, Upay and cards accepted.',
   icons: { icon: '/favicon.ico' },
+  openGraph: {
+    title: 'Dostelo - Boys Clothing in Bangladesh | Shirts, Tees, Pants & Belts',
+    description:
+      'DOSTELO is a boys clothing store in Bangladesh - shirts, t-shirts, polos, pants, jeans, belts and accessories in honest fabrics and fair taka prices. Cash on Delivery, bKash, Nagad, Rocket, Upay and cards accepted.',
+    images: [{ url: OG_IMAGE_URL, alt: OG_IMAGE_ALT }],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Dostelo - Boys Clothing in Bangladesh | Shirts, Tees, Pants & Belts',
+    description:
+      'DOSTELO is a boys clothing store in Bangladesh - shirts, t-shirts, polos, pants, jeans, belts and accessories in honest fabrics and fair taka prices. Cash on Delivery, bKash, Nagad, Rocket, Upay and cards accepted.',
+    images: [OG_IMAGE_URL],
+  },
 };
 
 export const viewport: Viewport = {
