@@ -18,8 +18,14 @@
    sidebar rules synced from the live site fix, which postdates
    the preserved legacy stylesheet; it imports after legacy.css
    and before the utilities, and legacy.css itself stays
-   byte-identical. */
+   byte-identical.
+   A second addition: styles/footer.css carries the mobile
+   header three-zone grid and the always-dark footer redesign,
+   also synced from the live site, where the same block is
+   appended after the legacy stylesheet; it imports after
+   sidebar.css so the cascade matches the live file. */
 @import "../../../../packages/design-tokens/tokens.css";
 @import "../styles/legacy.css";
 @import "../styles/sidebar.css";
+@import "../styles/footer.css";
 @tailwind utilities;
