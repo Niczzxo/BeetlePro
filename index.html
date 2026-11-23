@@ -818,16 +818,16 @@ footer ul button:hover{color:var(--on-dark)}
 .formnote{background:var(--chip);border-radius:14px;padding:14px 18px;font-size:14px;color:var(--ink)}
 
 /* ---------- bag drawer / modal / toast ---------- */
-.scrim{position:fixed;inset:0;background:rgba(18,16,13,.5);backdrop-filter:blur(3px);z-index:90;opacity:0;pointer-events:none;transition:opacity .35s}
-.scrim.on{opacity:1;pointer-events:auto}
+.scrim{position:fixed;inset:0;background:rgba(18,16,13,.5);backdrop-filter:blur(3px);z-index:90;opacity:0;pointer-events:none;visibility:hidden;transition:opacity .35s,visibility 0s linear .35s}
+.scrim.on{opacity:1;pointer-events:auto;visibility:visible;transition:opacity .35s}
 .drawer{position:fixed;top:0;right:0;height:100dvh;width:min(430px,100vw);background:var(--surface);z-index:95;transform:translateX(105%);transition:transform .45s cubic-bezier(.22,.8,.3,1);display:flex;flex-direction:column;box-shadow:var(--shadow)}
 .drawer.on{transform:none}
 .drawer header{position:static;background:none;backdrop-filter:none}
 .dhead{display:flex;justify-content:space-between;align-items:center;padding:20px 22px;border-bottom:1px solid var(--line)}
 .dhead h3{font-size:19px}
 /* ---------- mobile sidebar ---------- */
-.mscrim{position:fixed;inset:0;background:rgba(18,16,13,.5);backdrop-filter:blur(3px);z-index:90;opacity:0;pointer-events:none;transition:opacity .35s}
-.mscrim.on{opacity:1;pointer-events:auto}
+.mscrim{position:fixed;inset:0;background:rgba(18,16,13,.5);backdrop-filter:blur(3px);z-index:90;opacity:0;pointer-events:none;visibility:hidden;transition:opacity .35s,visibility 0s linear .35s}
+.mscrim.on{opacity:1;pointer-events:auto;visibility:visible;transition:opacity .35s}
 .snav{position:fixed;top:0;left:0;height:100dvh;width:min(320px,86vw);background:var(--surface);color:var(--ink);z-index:96;transform:translateX(-105%);transition:transform .45s cubic-bezier(.22,.8,.3,1);display:flex;flex-direction:column;box-shadow:var(--shadow)}
 .snav.on{transform:none}
 .snav-head{display:flex;justify-content:space-between;align-items:center;padding:20px 22px;border-bottom:1px solid var(--line)}
@@ -1094,6 +1094,12 @@ footer ul button:hover{color:var(--on-dark)}
   .hbar .hicons{justify-self:end;gap:4px}
   .hbar .hbtn{width:36px;height:36px}
   .hbar .logo-img{height:26px;width:100px}
+  /* Scroll smoothness on phones: a backdrop blur on the full-width
+     sticky bar makes the browser re-blur the page under it on every
+     scroll frame. On small screens the bar instead uses a near-solid
+     tint of the same theme colour with no blur, which reads the same
+     while scrolling stays cheap. Desktop keeps the blurred bar. */
+  header#topbar{backdrop-filter:none;background:color-mix(in srgb,var(--bg) 97%,transparent)}
 }
 footer{background:#1C1B17;color:#F4F2ED;--dark:#1C1B17;--dark2:#2A2721;--on-dark:#F4F2ED;--on-dark-mut:rgba(244,242,237,.64);border-radius:0;margin:56px 0 0;padding:46px 0 0}
 footer .fgrid{display:grid;grid-template-columns:1.55fr .78fr .78fr .95fr .88fr 1.66fr;gap:30px 26px;align-items:start}
@@ -1181,14 +1187,14 @@ footer .fsep{color:rgba(244,242,237,.32)}
   footer .news button{width:66px;height:44px}
   footer .news button .icon{width:20px;height:20px}
   footer .formnote{margin-left:auto;margin-right:auto;text-align:left}
-  footer .fcol{order:3;border-top:1px solid rgba(244,242,237,.12)}
+  footer .fcol{order:3;width:100%;border-top:1px solid rgba(244,242,237,.12)}
   footer .fcol-first{margin-top:28px}
   footer .fcol h4{display:none}
   footer .facc-btn{display:flex;width:100%;align-items:center;gap:12px;min-height:57px;padding:0 2px;color:var(--on-dark);font-size:17px;font-weight:600;text-align:left}
   footer .facc-btn .icon{width:22px;height:22px;color:var(--on-dark)}
   footer .facc-btn .fchev{width:18px;height:18px;margin-left:auto;color:rgba(244,242,237,.6);transition:transform .35s ease}
   footer .fcol.open .facc-btn .fchev{transform:rotate(180deg)}
-  footer .facc-body{display:grid;grid-template-rows:0fr;visibility:hidden;transition:grid-template-rows .38s ease,visibility 0s linear .38s}
+  footer .facc-body{display:grid;width:100%;grid-template-rows:0fr;visibility:hidden;transition:grid-template-rows .38s ease,visibility 0s linear .38s}
   footer .fcol.open .facc-body{grid-template-rows:1fr;visibility:visible;transition:grid-template-rows .38s ease}
   footer .facc-body>ul{min-height:0;overflow:hidden;padding:0 0 12px 36px}
   footer .fcol ul button{font-size:14.5px;min-height:30px}
@@ -1205,8 +1211,8 @@ footer .fsep{color:rgba(244,242,237,.32)}
   footer .paylogos .plogo img{height:22px;max-height:22px}
   footer .paylogos .plogo.cod{font-size:12.5px;padding:5px 10px}
   footer .fbot>span{flex:none;margin-top:18px;font-size:13.5px;color:rgba(244,242,237,.8)}
-  footer .fbot .links{flex:none;justify-content:center;margin-top:12px;gap:12px}
-  footer .fbot .links button{color:var(--on-dark);font-size:13.5px}
+  footer .fbot .links{flex:none;justify-content:center;align-items:center;margin-top:12px;gap:10px}
+  footer .fbot .links button{color:var(--on-dark);font-size:12px;white-space:nowrap;padding:0}
   footer .fsep{color:rgba(244,242,237,.35)}
 }
 </style>
@@ -2311,6 +2317,7 @@ document.addEventListener('click', function(e){
     if (document.hidden) return;
     if (!slider.offsetParent) return; /* home view not showing */
     if (ink && ink.classList.contains('is-active')) return; /* ink bleed mid-flip */
+    if (slider.closest && slider.closest('.anim-off')) return; /* hero off screen: do not crossfade big photos nobody can see */
     show(idx + 1);
   }
   function play(){ stop(); if (!reduced) timer = setInterval(tick, DELAY); }
@@ -3360,7 +3367,16 @@ $$('#sidenav [data-nav]').forEach(function(b){ b.addEventListener('click', close
 $('#snavAccount').addEventListener('click', function(){ closeMenu(); var b = document.querySelector('.hicons [data-nav="account"]'); if (b) b.dispatchEvent(new MouseEvent('click', {bubbles:true})); });
 $('#snavWishlist').addEventListener('click', function(){ closeMenu(); var b = $('#wishBtn'); if (b) b.dispatchEvent(new MouseEvent('click', {bubbles:true})); });
 (function(){ var light = document.querySelector('#topbar .logo-img.logo-light'); var dark = document.querySelector('#topbar .logo-img.logo-dark'); if (light) $('#snavLogoLight').src = light.src; if (dark) $('#snavLogoDark').src = dark.src; })();
-window.addEventListener('scroll', function(){ $('#topbar').classList.toggle('scrolled', window.scrollY>10); }, {passive:true});
+var topbarEl = $('#topbar'), topbarQueued = false, topbarOn = false;
+window.addEventListener('scroll', function(){
+  if (topbarQueued) return;
+  topbarQueued = true;
+  requestAnimationFrame(function(){
+    topbarQueued = false;
+    var on = window.scrollY > 10;
+    if (on !== topbarOn){ topbarOn = on; if (topbarEl) topbarEl.classList.toggle('scrolled', on); }
+  });
+}, {passive:true});
 document.addEventListener('keydown', function(e){ if (e.key==='Escape') closeAll(); });
 
 var REVEAL_SEL = '.reveal:not(.in), .reveal-zoom:not(.in), .reveal-look:not(.in), .reveal-pop:not(.in)';
@@ -4564,9 +4580,24 @@ void main() {
   }
 
   /* ---------- Capture scheduling ---------- */
+  /* A background capture pins the scroll and renders the whole
+     document twice on the main thread, so one that starts while the
+     visitor is scrolling reads as a hard scroll freeze on a phone.
+     The stamp below holds any scheduled (background) capture until
+     the scroll has been idle for a moment; it then runs exactly as
+     before. A theme flip never waits on this: it captures on demand
+     through ensureSnapshots, which calls captureAll directly. */
+  var lastScrollStamp = 0;
+  window.addEventListener('scroll', function(){ lastScrollStamp = performance.now(); }, { passive: true });
   function scheduleCapture(delay){
     clearTimeout(resizeTimer);
-    resizeTimer = setTimeout(function(){ captureAll(); }, delay);
+    resizeTimer = setTimeout(function(){
+      if (performance.now() - lastScrollStamp < 1200){
+        scheduleCapture(RESIZE_DEBOUNCE_MS);
+        return;
+      }
+      captureAll();
+    }, delay);
   }
 
   function captureAll(){
