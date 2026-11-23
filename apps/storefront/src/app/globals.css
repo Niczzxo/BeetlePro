@@ -1,0 +1,11 @@
+/* Dostelo storefront global styles.
+   Import order follows the migration contract: the design tokens
+   (Migration Stage 1, extracted verbatim from the legacy CSS) come
+   first, then the complete legacy stylesheet (Migration Phase 2,
+   extracted character-exact from
+   apps/storefront/public/legacy/index.html). The legacy stylesheet
+   carries every selector, keyframe, breakpoint and value of the
+   original site, including its own body rules, so nothing is
+   redefined here. */
+@import "../../../../packages/design-tokens/tokens.css";
+@import "../styles/legacy.css";
