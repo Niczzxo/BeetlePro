@@ -131,20 +131,18 @@ export default function RecoverView({ token }: { token: string }) {
           </div>
 
           {state.kind === 'loading' ? (
-            <p style={{ marginTop: 28, color: 'var(--muted)' }}>
-              Finding your bag...
-            </p>
+            <p className="mt-7 text-muted">Finding your bag...</p>
           ) : null}
 
           {state.kind === 'unknown' ? (
-            <div style={{ marginTop: 28 }}>
-              <h2 style={{ fontSize: 24 }}>We could not find this link</h2>
-              <p style={{ maxWidth: 560, marginTop: 12 }}>
+            <div className="mt-7">
+              <h2 className="text-[24px]">We could not find this link</h2>
+              <p className="max-w-[560px] mt-3">
                 This recovery link does not match any saved bag. It may
                 have been copied incompletely, or the bag may already
                 have been cleared. Nothing was added to your bag.
               </p>
-              <p style={{ marginTop: 20 }}>
+              <p className="mt-5">
                 <Link className="btn" href="/shop">
                   Continue shopping
                 </Link>
@@ -153,17 +151,17 @@ export default function RecoverView({ token }: { token: string }) {
           ) : null}
 
           {state.kind === 'ready' && state.view.status !== 'active' ? (
-            <div style={{ marginTop: 28 }}>
-              <h2 style={{ fontSize: 24 }}>
+            <div className="mt-7">
+              <h2 className="text-[24px]">
                 {STATUS_HEADINGS[state.view.status] ??
                   'This recovery link is no longer active'}
               </h2>
-              <p style={{ maxWidth: 560, marginTop: 12 }}>
+              <p className="max-w-[560px] mt-3">
                 {state.view.message ??
                   STATUS_NOTES[state.view.status] ??
                   'This bag is no longer available for recovery.'}
               </p>
-              <p style={{ marginTop: 20 }}>
+              <p className="mt-5">
                 <Link className="btn" href="/shop">
                   Continue shopping
                 </Link>
@@ -172,7 +170,7 @@ export default function RecoverView({ token }: { token: string }) {
           ) : null}
 
           {state.kind === 'ready' && state.view.status === 'active' ? (
-            <div style={{ marginTop: 28 }}>
+            <div className="mt-7">
               {state.view.items.length === 0 ? (
                 <p>
                   This bag is empty now. The pieces are still in the shop
@@ -186,13 +184,7 @@ export default function RecoverView({ token }: { token: string }) {
                       return (
                         <div
                           key={line.variantId}
-                          style={{
-                            display: 'flex',
-                            gap: 16,
-                            alignItems: 'center',
-                            padding: '14px 0',
-                            borderBottom: '1px solid var(--line)',
-                          }}
+                          className="flex gap-4 items-center py-[14px] border-b border-line [border-bottom-style:solid]"
                         >
                           {product ? (
                             <img
@@ -200,20 +192,12 @@ export default function RecoverView({ token }: { token: string }) {
                               decoding="async"
                               src={product.img}
                               alt={line.productName}
-                              style={{
-                                width: 72,
-                                height: 72,
-                                objectFit: 'cover',
-                                borderRadius: 'var(--r-md)',
-                                background: 'var(--surface2)',
-                              }}
+                              className="w-[72px] h-[72px] object-cover rounded-md bg-surface2"
                             />
                           ) : null}
-                          <div style={{ flex: 1 }}>
+                          <div className="flex-1">
                             <b>{line.productName}</b>
-                            <div
-                              style={{ fontSize: 13, color: 'var(--muted)' }}
-                            >
+                            <div className="text-[13px] text-muted">
                               {line.variantName} · {money(line.unitPrice.amountMinor / 100)} · Qty{' '}
                               {line.quantity}
                             </div>
@@ -223,34 +207,20 @@ export default function RecoverView({ token }: { token: string }) {
                       );
                     })}
                   </div>
-                  <div
-                    style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      marginTop: 18,
-                      fontSize: 17,
-                    }}
-                  >
+                  <div className="flex justify-between mt-[18px] text-[17px]">
                     <span>Subtotal at today's prices</span>
                     <b>{money(state.view.subtotal.amountMinor / 100)}</b>
                   </div>
 
                   {added ? (
-                    <div style={{ marginTop: 22 }}>
+                    <div className="mt-[22px]">
                       <p>
                         Your pieces are in your bag.
                         {skipped > 0
                           ? ` ${skipped} saved piece(s) are no longer in the catalogue and could not be added.`
                           : ''}
                       </p>
-                      <p
-                        style={{
-                          marginTop: 14,
-                          display: 'flex',
-                          gap: 10,
-                          flexWrap: 'wrap',
-                        }}
-                      >
+                      <p className="mt-[14px] flex gap-[10px] flex-wrap">
                         <button
                           type="button"
                           className="btn"
@@ -268,7 +238,7 @@ export default function RecoverView({ token }: { token: string }) {
                       </p>
                     </div>
                   ) : (
-                    <p style={{ marginTop: 22 }}>
+                    <p className="mt-[22px]">
                       <button
                         type="button"
                         className="btn"

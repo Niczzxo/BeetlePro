@@ -176,3 +176,67 @@ naming the configured API URL), 401 (session expiry redirect),
 403 (a clear permission message) and ordinary API errors (the
 API's own message), with retry where a retry makes sense.
 Loading states are plain text notes, consistent across pages.
+
+## Tailwind CSS configuration
+
+Tailwind CSS v3.4.19 is installed in this app (devDependencies:
+`tailwindcss`, `postcss`, `autoprefixer`), wired through
+`postcss.config.mjs` and configured in `tailwind.config.ts`.
+The storefront uses the same version and the same approach,
+so the monorepo has one shared Tailwind setup. v3 was chosen
+over v4 because it exposes an explicit `content` list and
+`corePlugins.preflight`: the storefront needs that guarantee
+for its legacy stylesheet, and the admin follows the same
+setup for consistency.
+
+Preflight decision: preflight is OFF here too
+(`corePlugins: { preflight: false }`), and `src/app/globals.css`
+imports only `@tailwind utilities` after the design tokens.
+The admin has no legacy design constraint, but its current look
+must not change, so the existing hand-written CSS stays as the
+base, exactly as written, and Tailwind utilities are added
+alongside it instead of resetting anything.
+
+Theme mapping: every value in `tailwind.config.ts` resolves
+to an existing CSS variable. The colours, radii and shadow
+map to the Dostelo design tokens from
+`@dostelo/design-tokens` (`tokens.css`), the same variables
+this app's globals.css already used (`bg`, `panel`, `surface`,
+`surface2`, `ink`, `body`, `muted`, `line`, `dark`, `dark2`,
+`on-dark`, `on-dark-mut`, `chip`, `--r-lg`, `--r-md`,
+`--r-sm`, `--shadow`), and `fontFamily.sans` is the admin
+body font stack from globals.css verbatim (system-ui,
+-apple-system, "Segoe UI", Roboto, sans-serif). No colour,
+spacing, radius or font value is hard-coded in the config.
+
+What was converted, and what was not:
+
+- The shared primitives in `src/components/ui.tsx`
+  (PageHeader, the note components, ErrorNote with its retry
+  button, StatCard and Badge) are now written in utility
+  classes that reproduce their previous classes value for
+  value.
+- In `src/app/globals.css`, the reusable primitive classes
+  that the pages still use (`.page-head`, `.card`, `.grid`,
+  `.stat-card` parts, `.note`, `.muted`, `.error-note`,
+  `.badge`, `.table-wrap`, `table.data`, `.field`, `.input`,
+  `.select`, `.toolbar`, `.btn` and its variants) are now
+  expressed with `@apply` over the token-mapped utilities, so
+  their computed values are identical and every page renders
+  as before.
+- Left on plain CSS, deliberately: `font: inherit` inside
+  `.btn`, `.input` and `.select` (kept as a plain declaration
+  beside the `@apply`, since no utility expresses it in a
+  class definition; the ui.tsx retry button uses the
+  arbitrary property `[font:inherit]` instead); the
+  `border-bottom` shorthand on `table.data` cells (a
+  border-width plus border-style utility pair would, with
+  preflight off, also paint the other three sides, whose
+  widths are otherwise unset); the `.grid` template columns;
+  and the `.form-error` colour `#9c2b1b`, which has no design
+  token. Mapping it to the nearest token would change its
+  value, so the original hex stays in place and only its
+  size, line-height and margin were converted.
+- Everything else in globals.css (shell, sidebar, topbar,
+  detail layouts, timeline, drawer) is untouched hand-written
+  CSS and remains the base layer of the admin's look.

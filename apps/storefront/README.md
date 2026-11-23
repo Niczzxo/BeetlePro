@@ -70,3 +70,64 @@ architecture:
   stylesheet. The route is `noindex`, since the link is
   personal.
 
+
+## Tailwind CSS configuration
+
+Tailwind CSS v3.4.19 is installed in this app (devDependencies:
+`tailwindcss`, `postcss`, `autoprefixer`), wired through
+`postcss.config.mjs` and configured in `tailwind.config.ts`. The
+admin app uses the same version and the same approach, so the
+monorepo has one shared Tailwind setup.
+
+Why v3.4.19 and not v4:
+
+- v3 exposes an explicit `content` list and
+  `corePlugins.preflight`, which is the only way to guarantee
+  that no global reset ever touches the ported legacy
+  stylesheet. The v4 equivalent (importing only the utilities
+  layer) relies on cascade layers, and its automatic content
+  detection would scan the preserved legacy HTML under
+  `public/legacy/` and generate utilities from it.
+- v3's theme object maps directly onto the existing design
+  tokens, and its PostCSS integration is the documented,
+  stable pairing for this app's Next.js 15 setup.
+
+Preflight decision: preflight is OFF, twice over.
+`corePlugins: { preflight: false }` is set in
+`tailwind.config.ts`, and `src/app/globals.css` imports only
+`@tailwind utilities` (no base layer, no components layer),
+placed AFTER the legacy stylesheet import. Tailwind therefore
+emits no global reset of any kind, and utilities sit after
+`legacy.css` in the cascade so they are available to new
+components without disturbing the legacy design.
+
+Theme mapping: every value in `tailwind.config.ts` resolves to
+a CSS variable from `@dostelo/design-tokens` (`tokens.css`).
+Colours map one to one (`bg`, `panel`, `surface`, `surface2`,
+`ink`, `body`, `muted`, `line`, `dark`, `dark2`, `on-dark`,
+`on-dark-mut`, `chip`), `borderRadius` maps `lg`, `md` and
+`sm` to `--r-lg`, `--r-md` and `--r-sm`, `boxShadow.token`
+maps to `--shadow`, and `fontFamily.sans` is the legacy body
+font stack verbatim ("Instrument Sans", system-ui,
+sans-serif). No colour, spacing, radius or font value is
+hard-coded in the config.
+
+Standing rule: `src/styles/legacy.css` is never edited to
+accommodate Tailwind, and the preserved file at
+`public/legacy/index.html` is never touched. Legacy-derived
+components keep their legacy classes. So far only the two
+architecture additions are styled with utilities: the tracking
+consent notice in `src/features/tracking/Tracker.tsx` and the
+recovery view in `src/components/recover/RecoverView.tsx`.
+Their utility values reproduce the inline styles they carried
+before, token for token. Two exactness notes:
+
+- Font sizes that were set inline with no line-height change
+  (for example the recovery headings at 24px) use arbitrary
+  size utilities such as `text-[24px]`, because the named
+  scale steps would also set a line-height and change the
+  rendering.
+- The consent buttons used to carry `font: inherit` inline.
+  It is not repeated in utilities because the legacy
+  stylesheet already sets `font: inherit` on every button
+  element, so the computed value is unchanged.

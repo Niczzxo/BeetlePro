@@ -16,13 +16,19 @@
  * - checkout-start when the checkout page opens, with the cart
  *   value at that moment.
  *
- * The consent notice uses only the existing design tokens
+ * The consent notice is styled with Tailwind utility classes
+ * whose values all resolve to the existing design tokens
  * (var(--surface), var(--ink), var(--line), var(--dark),
- * var(--on-dark), var(--r-md), var(--shadow)): no new colours,
- * no new CSS file, nothing in the legacy stylesheet.
+ * var(--on-dark), var(--r-md), var(--r-sm), var(--shadow))
+ * through the theme mapping in tailwind.config.ts: no new
+ * colours, no new CSS file, nothing in the legacy stylesheet.
+ * The one inline declaration it used to carry that has no
+ * utility here, font: inherit on the buttons, is already the
+ * computed value: the legacy stylesheet sets font: inherit on
+ * every button element.
  */
 
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { useCart } from '../cart/CartProvider';
 import {
@@ -31,42 +37,6 @@ import {
   trackEvent,
   type MarketingConsentChoice,
 } from './tracker';
-
-const barStyle: CSSProperties = {
-  position: 'fixed',
-  left: 16,
-  right: 16,
-  bottom: 16,
-  maxWidth: 560,
-  margin: '0 auto',
-  zIndex: 80,
-  background: 'var(--surface)',
-  color: 'var(--ink)',
-  border: '1px solid var(--line)',
-  borderRadius: 'var(--r-md)',
-  boxShadow: 'var(--shadow)',
-  padding: '16px 18px',
-};
-
-const acceptStyle: CSSProperties = {
-  background: 'var(--dark)',
-  color: 'var(--on-dark)',
-  border: '1px solid var(--dark)',
-  borderRadius: 'var(--r-sm)',
-  padding: '8px 16px',
-  cursor: 'pointer',
-  font: 'inherit',
-};
-
-const declineStyle: CSSProperties = {
-  background: 'transparent',
-  color: 'var(--ink)',
-  border: '1px solid var(--line)',
-  borderRadius: 'var(--r-sm)',
-  padding: '8px 16px',
-  cursor: 'pointer',
-  font: 'inherit',
-};
 
 export default function Tracker() {
   const pathname = usePathname();
@@ -147,22 +117,30 @@ export default function Tracker() {
   if (answered || consent !== null) return null;
 
   return (
-    <div style={barStyle} role="region" aria-label="Cookie consent">
-      <p style={{ margin: '0 0 6px', fontWeight: 600 }}>Your privacy</p>
-      <p style={{ margin: '0 0 12px', color: 'var(--body)' }}>
+    <div
+      className="fixed left-4 right-4 bottom-4 max-w-[560px] mx-auto z-[80] bg-surface text-ink border border-solid border-line rounded-md shadow-token px-[18px] py-4"
+      role="region"
+      aria-label="Cookie consent"
+    >
+      <p className="mx-0 mt-0 mb-[6px] font-semibold">Your privacy</p>
+      <p className="mx-0 mt-0 mb-3 text-body">
         Dostelo records anonymous browsing activity (pages viewed,
         products seen, searches and bag activity) under a random
         id to understand what shoppers look for. It is never used
         to identify you. You can decline marketing use of this
         activity; the store works the same either way.
       </p>
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        <button type="button" style={acceptStyle} onClick={() => answer('granted')}>
+      <div className="flex gap-2 flex-wrap">
+        <button
+          type="button"
+          className="bg-dark text-on-dark border border-solid border-dark rounded-sm px-4 py-2 cursor-pointer"
+          onClick={() => answer('granted')}
+        >
           Accept marketing use
         </button>
         <button
           type="button"
-          style={declineStyle}
+          className="bg-transparent text-ink border border-solid border-line rounded-sm px-4 py-2 cursor-pointer"
           onClick={() => answer('denied')}
         >
           Decline

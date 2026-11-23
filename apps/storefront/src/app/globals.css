@@ -6,6 +6,14 @@
    apps/storefront/public/legacy/index.html). The legacy stylesheet
    carries every selector, keyframe, breakpoint and value of the
    original site, including its own body rules, so nothing is
-   redefined here. */
+   redefined here.
+   Tailwind CSS v3.4.19 utilities come last, after legacy.css, so
+   utilities are available to new architecture-addition components
+   without disturbing the cascade of the legacy design. Preflight
+   is disabled in tailwind.config.ts (corePlugins.preflight) and
+   no base or components layer is imported here, so Tailwind emits
+   no global reset of any kind. Never edit legacy.css to
+   accommodate Tailwind. */
 @import "../../../../packages/design-tokens/tokens.css";
 @import "../styles/legacy.css";
+@tailwind utilities;
