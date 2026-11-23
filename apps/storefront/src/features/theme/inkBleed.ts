@@ -1339,9 +1339,28 @@ export function initInkBleed(): void {
   }
 
   /* ---------- Capture scheduling ---------- */
+  /* A background capture pins the scroll and renders the whole
+     document twice on the main thread, so one that starts while the
+     visitor is scrolling reads as a hard scroll freeze on a phone.
+     The stamp below holds any scheduled (background) capture until
+     the scroll has been idle for a moment; it then runs exactly as
+     before. A theme flip never waits on this: it captures on demand
+     through ensureSnapshots, which calls captureAll directly. */
+  let lastScrollStamp = 0;
+  window.addEventListener(
+    'scroll',
+    function () {
+      lastScrollStamp = performance.now();
+    },
+    { passive: true },
+  );
   function scheduleCapture(delay: number): void {
     window.clearTimeout(resizeTimer);
     resizeTimer = window.setTimeout(function () {
+      if (performance.now() - lastScrollStamp < 1200) {
+        scheduleCapture(RESIZE_DEBOUNCE_MS);
+        return;
+      }
       captureAll();
     }, delay);
   }

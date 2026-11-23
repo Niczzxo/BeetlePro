@@ -87,9 +87,25 @@ export default function Header() {
         .slice(0, 5)
     : [];
 
+  /* The live scroll handler, hardened in its scroll smoothness
+     pass: coalesced through requestAnimationFrame, and the class
+     is only written when the scrolled state actually flips. The
+     header element is the cached headerRef rather than a fresh
+     query on every scroll event. */
   useEffect(() => {
+    let queued = false;
+    let on = false;
     const onScroll = () => {
-      headerRef.current?.classList.toggle('scrolled', window.scrollY > 10);
+      if (queued) return;
+      queued = true;
+      requestAnimationFrame(() => {
+        queued = false;
+        const next = window.scrollY > 10;
+        if (next !== on) {
+          on = next;
+          headerRef.current?.classList.toggle('scrolled', on);
+        }
+      });
     };
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => window.removeEventListener('scroll', onScroll);

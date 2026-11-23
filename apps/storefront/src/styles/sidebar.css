@@ -6,11 +6,15 @@
    the .drawer slide (same .45s cubic-bezier(.22,.8,.3,1))
    from the left, and every colour runs through the existing
    design tokens and CSS variables, so the dark theme matches.
-   Only transform and opacity animate; nothing shifts layout. */
+   Only transform and opacity animate; nothing shifts layout.
+   The backdrop also carries the live scroll smoothness pattern:
+   visibility flips to hidden once the fade out ends (and back
+   the moment it opens), so the closed scrim's backdrop blur
+   layer leaves the compositing tree while the menu is shut. */
 
 /* ---------- mobile sidebar ---------- */
-.mscrim{position:fixed;inset:0;background:rgba(18,16,13,.5);backdrop-filter:blur(3px);z-index:90;opacity:0;pointer-events:none;transition:opacity .35s}
-.mscrim.on{opacity:1;pointer-events:auto}
+.mscrim{position:fixed;inset:0;background:rgba(18,16,13,.5);backdrop-filter:blur(3px);z-index:90;opacity:0;pointer-events:none;visibility:hidden;transition:opacity .35s,visibility 0s linear .35s}
+.mscrim.on{opacity:1;pointer-events:auto;visibility:visible;transition:opacity .35s}
 .snav{position:fixed;top:0;left:0;height:100dvh;width:min(320px,86vw);background:var(--surface);color:var(--ink);z-index:96;transform:translateX(-105%);transition:transform .45s cubic-bezier(.22,.8,.3,1);display:flex;flex-direction:column;box-shadow:var(--shadow)}
 .snav.on{transform:none}
 .snav-head{display:flex;justify-content:space-between;align-items:center;padding:20px 22px;border-bottom:1px solid var(--line)}

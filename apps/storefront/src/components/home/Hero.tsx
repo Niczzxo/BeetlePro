@@ -52,6 +52,7 @@ export default function Hero({ posters, minis }: { posters: HeroPoster[]; minis:
       if (document.hidden) return;
       if (!slider!.offsetParent) return; /* home view not showing */
       if (ink && ink.classList.contains('is-active')) return; /* ink bleed mid-flip */
+      if (slider!.closest && slider!.closest('.anim-off')) return; /* hero off screen: do not crossfade big photos nobody can see */
       show(idx + 1);
     }
     function stop() {

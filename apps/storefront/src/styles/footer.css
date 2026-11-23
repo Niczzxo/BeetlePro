@@ -4,7 +4,12 @@
    rules live here instead of in legacy.css (which stays
    byte-identical), imported after legacy.css so the cascade
    matches the live file. The block below is the live site's own,
-   value for value. */
+   value for value.
+   Catch-up: the live file's later accordion width fix (full width
+   columns and link rows at max-width 767px, one-line bottom links)
+   and its scroll smoothness pass (the header rule inside the
+   860px block below, plus the scrim override at the end of this
+   file) are folded in, again value for value. */
 
 /* ================= mobile header zones, footer redesign =================
    Header, phones only: .hbar becomes a three-zone grid (burger at the
@@ -25,6 +30,12 @@
   .hbar .hicons{justify-self:end;gap:4px}
   .hbar .hbtn{width:36px;height:36px}
   .hbar .logo-img{height:26px;width:100px}
+  /* Scroll smoothness on phones: a backdrop blur on the full-width
+     sticky bar makes the browser re-blur the page under it on every
+     scroll frame. On small screens the bar instead uses a near-solid
+     tint of the same theme colour with no blur, which reads the same
+     while scrolling stays cheap. Desktop keeps the blurred bar. */
+  header#topbar{backdrop-filter:none;background:color-mix(in srgb,var(--bg) 97%,transparent)}
 }
 footer{background:#1C1B17;color:#F4F2ED;--dark:#1C1B17;--dark2:#2A2721;--on-dark:#F4F2ED;--on-dark-mut:rgba(244,242,237,.64);border-radius:0;margin:56px 0 0;padding:46px 0 0}
 footer .fgrid{display:grid;grid-template-columns:1.55fr .78fr .78fr .95fr .88fr 1.66fr;gap:30px 26px;align-items:start}
@@ -112,14 +123,14 @@ footer .fsep{color:rgba(244,242,237,.32)}
   footer .news button{width:66px;height:44px}
   footer .news button .icon{width:20px;height:20px}
   footer .formnote{margin-left:auto;margin-right:auto;text-align:left}
-  footer .fcol{order:3;border-top:1px solid rgba(244,242,237,.12)}
+  footer .fcol{order:3;width:100%;border-top:1px solid rgba(244,242,237,.12)}
   footer .fcol-first{margin-top:28px}
   footer .fcol h4{display:none}
   footer .facc-btn{display:flex;width:100%;align-items:center;gap:12px;min-height:57px;padding:0 2px;color:var(--on-dark);font-size:17px;font-weight:600;text-align:left}
   footer .facc-btn .icon{width:22px;height:22px;color:var(--on-dark)}
   footer .facc-btn .fchev{width:18px;height:18px;margin-left:auto;color:rgba(244,242,237,.6);transition:transform .35s ease}
   footer .fcol.open .facc-btn .fchev{transform:rotate(180deg)}
-  footer .facc-body{display:grid;grid-template-rows:0fr;visibility:hidden;transition:grid-template-rows .38s ease,visibility 0s linear .38s}
+  footer .facc-body{display:grid;width:100%;grid-template-rows:0fr;visibility:hidden;transition:grid-template-rows .38s ease,visibility 0s linear .38s}
   footer .fcol.open .facc-body{grid-template-rows:1fr;visibility:visible;transition:grid-template-rows .38s ease}
   footer .facc-body>ul{min-height:0;overflow:hidden;padding:0 0 12px 36px}
   footer .fcol ul button{font-size:14.5px;min-height:30px}
@@ -136,7 +147,19 @@ footer .fsep{color:rgba(244,242,237,.32)}
   footer .paylogos .plogo img{height:22px;max-height:22px}
   footer .paylogos .plogo.cod{font-size:12.5px;padding:5px 10px}
   footer .fbot>span{flex:none;margin-top:18px;font-size:13.5px;color:rgba(244,242,237,.8)}
-  footer .fbot .links{flex:none;justify-content:center;margin-top:12px;gap:12px}
-  footer .fbot .links button{color:var(--on-dark);font-size:13.5px}
+  footer .fbot .links{flex:none;justify-content:center;align-items:center;margin-top:12px;gap:10px}
+  footer .fbot .links button{color:var(--on-dark);font-size:12px;white-space:nowrap;padding:0}
   footer .fsep{color:rgba(244,242,237,.35)}
 }
+
+/* Scroll smoothness, synced from the same live fix: the bag
+   drawer's shared scrim keeps a full-screen backdrop blur layer
+   in the compositing tree even while closed. The live file folds
+   the standard visibility pattern into the .scrim rule itself;
+   here the base rule sits in the frozen legacy.css, so the same
+   pattern is applied as an override (this file imports after
+   legacy.css): hidden once the fade out ends, visible the moment
+   it opens, so the idle layer leaves the tree entirely. The menu
+   sidebar's .mscrim carries the same pattern in sidebar.css. */
+.scrim{visibility:hidden;transition:opacity .35s,visibility 0s linear .35s}
+.scrim.on{visibility:visible;transition:opacity .35s}
