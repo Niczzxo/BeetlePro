@@ -252,6 +252,66 @@ seam), policies where a module has flow rules.
   details, honest states for recovered, closed, cancelled and
   expired tokens). Full detail:
   src/modules/cart-recovery/README.md.
+- `src/modules/returns`: return and exchange requests against
+  delivered orders (GET and POST /v1/admin/returns plus approve,
+  reject, refund and complete actions). Quantities are checked
+  against what is left to return; approval restocks through the
+  inventory service and moves the order to returned when a
+  request covers it fully; the refund hand-off creates the
+  refund in Payments (a collected COD payment on a fully
+  returned order is already settled by the payments order sync,
+  and the hand-off records that instead of double-refunding).
+- `src/modules/support`: staff-created support tickets
+  (/v1/admin/support-tickets) with a reply and internal-note
+  log, assignment and status. The storefront has no ticket
+  intake, so the opening message records the customer's words
+  from phone, Messenger or in-person contact.
+- `src/modules/reviews`: staff-entered product reviews and
+  moderation (/v1/admin/reviews). A review is marked
+  verified-purchase only when the named customer has a
+  delivered order containing the product.
+- `src/modules/marketing`: campaign records (/v1/admin/campaigns)
+  with draft, scheduled and cancelled states. Every view carries
+  the channel's live sending state from the communications
+  config checks; nothing sends from here.
+- `src/modules/loyalty`: points rules in store settings and
+  per-customer balances derived from delivered orders
+  (/v1/admin/loyalty). Only staff adjustments are stored
+  (LoyaltyTransaction), each one audited, with a floor at zero.
+- `src/modules/reports`: GET /v1/admin/reports/summary,
+  read-only aggregation over orders, payments and recovery:
+  sales by day, top products, delivery zone split, payment
+  method split and recovery performance. No models of its own.
+- `src/modules/website`: GET and PUT /v1/admin/store-settings
+  over the StoreSettings seam (store profile, delivery fees,
+  free-delivery offer, manual payment instructions, loyalty
+  rules). Checkout charges the delivery fee table stored here.
+- `src/modules/notifications`: the staff feed
+  (/v1/admin/notifications), derived at read time from pending
+  orders, low stock and in-recovery carts; only per-staff read
+  marks are stored (NotificationRead).
+- `src/modules/staff`: admin user management
+  (/v1/admin/staff): list with live session counts, create with
+  a temporary password, role changes, deactivate and activate,
+  and forced logout by session revocation. Views never carry
+  password hashes or MFA secrets.
+- `src/modules/integrations`: GET /v1/admin/integrations, a
+  read-only board computed from the same config checks the
+  payment, shipping and communication services use. Missing
+  environment variable names only, never values.
+- `src/modules/legal`: the six legal documents
+  (/v1/admin/legal) stored as settings documents. The
+  storefront still serves its ported policy text; serving
+  these documents to it is a stated pending step.
+- `src/modules/backup`: POST /v1/admin/backups assembles one
+  JSON export of the core stores (customer password hashes
+  stripped) and records it (DataExport); GET lists past
+  exports. No external storage is involved.
+- `src/modules/automation`: GET /v1/admin/automation, a
+  read-only inventory of the automations that actually run
+  (cart recovery detection and sequence, lead evaluation,
+  recovery marking, COD payment sync) with live settings read
+  from the services that run them.
 
 Money is integer minor units (paisa) plus currency BDT everywhere,
 per @dostelo/types. The API namespace is /v1/... per docs/API.md.
@@ -270,7 +330,7 @@ implementations:
   per-process and resets on restart.
 - The Prisma classes (`prisma-*.repository.ts`, beside the
   in-memory ones in each module) run against PostgreSQL through
-  the schema in packages/database/prisma/schema.prisma (45
+  the schema in packages/database/prisma/schema.prisma (54
   models). AppModule imports PrismaModule instead of
   StoreModule when DATABASE_URL is set, each module binds its
   Prisma repository class under the same condition, and
