@@ -1231,6 +1231,12 @@ export function initInkBleed(): void {
     return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
   }
 
+  function setTogglePending(on: boolean): void {
+    btn!.classList.toggle('is-pending', !!on);
+    if (on) btn!.setAttribute('aria-busy', 'true');
+    else btn!.removeAttribute('aria-busy');
+  }
+
   function toggle(point?: { x: number; y: number }): void {
     guardStart();
     stopInk2D();
@@ -1238,7 +1244,10 @@ export function initInkBleed(): void {
        extra taps must not stack a second flip on top of it (the old
        fall-through cross-faded immediately, then the pending flip
        landed on top and flipped the theme straight back). */
-    if (toggleBusy) return;
+    if (toggleBusy) {
+      setTogglePending(true);
+      return;
+    }
     const to = otherTheme(getTheme());
     const scale = renderScale();
     const key = layoutKey(scale);
@@ -1270,6 +1279,7 @@ export function initInkBleed(): void {
       const unsupported = !renderer || renderer.lost || reducedMotion.matches || interrupting;
       if (!unsupported && !toggleBusy) {
         toggleBusy = true;
+        setTogglePending(true);
         const startTheme = getTheme();
         let settled = false;
         /* The tap must always answer: if the snapshots are not ready
@@ -1280,6 +1290,7 @@ export function initInkBleed(): void {
           if (settled) return;
           settled = true;
           toggleBusy = false;
+          setTogglePending(false);
           if (getTheme() === startTheme) inkFallback2D(otherTheme(startTheme), point);
         }, 2800);
         ensureSnapshots().then(function (ok) {
@@ -1287,6 +1298,7 @@ export function initInkBleed(): void {
           settled = true;
           window.clearTimeout(waitTimer);
           toggleBusy = false;
+          setTogglePending(false);
           /* If the theme already changed while waiting, this tap has
              been served - never flip a second time. */
           if (getTheme() !== startTheme) return;
@@ -1299,6 +1311,7 @@ export function initInkBleed(): void {
         return;
       }
       cancelAnim();
+      setTogglePending(false);
       /* No WebGL2 at all: still a visible ink transition (2D blob),
          never a silent instant swap. Reduced motion and a lost context
          keep the gentle cross-fade. */
@@ -1329,6 +1342,7 @@ export function initInkBleed(): void {
     state.progress = 0;
     state.time = 0;
 
+    setTogglePending(false);
     draw();
     canvas.style.opacity = '1';
     canvas.classList.add('is-active');
@@ -1389,6 +1403,27 @@ export function initInkBleed(): void {
      calls captureAll(true) directly, and only that path may pin. */
   let lastScrollStamp = performance.now();
   let scrollGen = 0;
+  /* Taps compete with captures too: a capture that starts right after
+     a tap, or keeps rendering through one, makes that tap feel dead.
+     The stamp defers new background captures for the same idle window
+     scrolling already uses; the generation lets a running background
+     capture abandon its results at the next step boundary when an
+     interaction lands (an in-flight html2canvas render itself cannot
+     be cancelled, but it is never followed by the second render, and
+     its output is discarded). Flip captures ignore both: they are the
+     interaction, and they take priority. */
+  let lastInteractionStamp = 0;
+  let interactionGen = 0;
+  ['pointerdown', 'touchstart', 'keydown'].forEach(function (type) {
+    window.addEventListener(
+      type,
+      function () {
+        lastInteractionStamp = performance.now();
+        interactionGen++;
+      },
+      { passive: true, capture: true },
+    );
+  });
   window.addEventListener(
     'scroll',
     function () {
@@ -1400,7 +1435,11 @@ export function initInkBleed(): void {
   function scheduleCapture(delay: number): void {
     window.clearTimeout(resizeTimer);
     resizeTimer = window.setTimeout(function () {
-      if (document.hidden || performance.now() - lastScrollStamp < 1200) {
+      if (
+        document.hidden ||
+        performance.now() - lastScrollStamp < 1200 ||
+        performance.now() - lastInteractionStamp < 1200
+      ) {
         scheduleCapture(RESIZE_DEBOUNCE_MS);
         return;
       }
@@ -1436,13 +1475,24 @@ export function initInkBleed(): void {
        results belong to a scroll position that no longer exists,
        so they are discarded and the capture re-queues itself for
        the next idle window instead of the page ever being pinned
-       still. Flip captures ignore this: they pin, so their scroll
-       position cannot move while they render. */
+       still. They watch the interaction generation the same way:
+       a tap landing mid-render discards the results and re-queues,
+       so the tap's own work (above all a flip capture) is never
+       stuck behind a background render. Flip captures ignore
+       both: they pin, so their scroll position cannot move while
+       they render, and they are the interaction. */
     const startScrollGen = scrollGen;
+    const startInteractionGen = interactionGen;
     const startY = window.scrollY;
     let aborted = false;
     function scrolledAway(): boolean {
-      return !forFlip && (aborted || scrollGen !== startScrollGen || document.hidden);
+      return (
+        !forFlip &&
+        (aborted ||
+          scrollGen !== startScrollGen ||
+          interactionGen !== startInteractionGen ||
+          document.hidden)
+      );
     }
     /* Watchdog: whatever happens below, the capture state MUST clear.
        A capture that never finishes would otherwise leave `capturing`
@@ -1527,13 +1577,14 @@ export function initInkBleed(): void {
       /* Both themes on the GPU from this one session: the pair is
          certified fresh for a flip at this layout and scroll
          position. A background pair only certifies if the visitor
-         never scrolled while it rendered; a scrolled-away capture
-         leaves any earlier certification untouched. */
+         never scrolled and never tapped while it rendered; a
+         scrolled-away or interacted capture leaves any earlier
+         certification untouched. */
       if (
         !aborted &&
         renderer!.hasValid(current, key) &&
         renderer!.hasValid(otherTheme(current), key) &&
-        (forFlip || scrollGen === startScrollGen)
+        (forFlip || (scrollGen === startScrollGen && interactionGen === startInteractionGen))
       ) {
         freshPairKey = key + '@' + pinY;
       }
@@ -1625,6 +1676,23 @@ export function initInkBleed(): void {
       else scheduleCapture(600);
     });
   }
+  btn.addEventListener(
+    'pointerdown',
+    function () {
+      setTogglePending(true);
+      /* A press that never becomes a click (finger slid off, gesture
+         taken over) must not leave the pending state stuck. */
+      window.setTimeout(function () {
+        if (!toggleBusy) setTogglePending(false);
+      }, 4000);
+    },
+    { passive: true },
+  );
+  ['pointerup', 'pointercancel'].forEach(function (type) {
+    btn!.addEventListener(type, function () {
+      if (!toggleBusy) setTogglePending(false);
+    });
+  });
   btn.addEventListener('click', function (e) {
     /* detail === 0 means a keyboard-activated click: spread from the button. */
     toggle(e.detail === 0 ? undefined : { x: e.clientX, y: e.clientY });
