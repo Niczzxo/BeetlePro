@@ -599,7 +599,7 @@ section{padding:84px 0 8px}
 .anim-chair{animation:slideIn .9s cubic-bezier(.22,1,.36,1) .2s both}
 /* Inner-page entrance: heads and lead blocks rise in like the reference */
 @keyframes viewIn{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
-.view:not(#view-home) .page-head,.view:not(#view-home) .crumb,.view:not(#view-home) .pd,.view:not(#view-home) .article,.view:not(#view-home) .split,.view:not(#view-home) .values,.view:not(#view-home) .filters{animation:viewIn .8s cubic-bezier(.22,1,.36,1) both}
+.view.view-enter:not(#view-home) .page-head,.view.view-enter:not(#view-home) .crumb,.view.view-enter:not(#view-home) .pd,.view.view-enter:not(#view-home) .article,.view.view-enter:not(#view-home) .split,.view.view-enter:not(#view-home) .values,.view.view-enter:not(#view-home) .filters{animation:viewIn .8s cubic-bezier(.22,1,.36,1) both}
 /* Search dropdown - the reference's nw-search-in keyframe, verbatim */
 @keyframes nw-search-in{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
 .searchdrop{animation:nw-search-in .3s ease both}
@@ -887,8 +887,8 @@ footer ul button:hover{color:var(--on-dark)}
 .codetag{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;background:var(--chip);border-radius:14px;padding:8px 8px 8px 20px;margin-bottom:16px}
 .codetag b{letter-spacing:.18em;color:var(--ink);font-size:16px}
 .codetag button{background:var(--surface);border-radius:999px;padding:0 16px;height:40px;font-size:13px;font-weight:600;color:var(--ink)}
-.toast{position:fixed;left:50%;bottom:26px;transform:translate(-50%,80px);background:var(--ink);color:var(--bg);border-radius:999px;padding:13px 22px;font-size:14.5px;font-weight:600;z-index:120;transition:transform .45s cubic-bezier(.22,.8,.3,1);box-shadow:var(--shadow);max-width:calc(100vw - 32px);text-align:center}
-.toast.on{transform:translate(-50%,0)}
+.toast{position:fixed;left:50%;bottom:26px;transform:translate(-50%,80px);background:var(--ink);color:var(--bg);border-radius:999px;padding:13px 22px;font-size:14.5px;font-weight:600;z-index:120;opacity:0;visibility:hidden;transition:transform .45s cubic-bezier(.22,.8,.3,1),opacity .3s ease,visibility 0s linear .45s;box-shadow:var(--shadow);max-width:calc(100vw - 32px);text-align:center}
+.toast.on{transform:translate(-50%,0);opacity:1;visibility:visible;transition:transform .45s cubic-bezier(.22,.8,.3,1),opacity .3s ease,visibility 0s}
 
 /* ---------- commerce additions (sizes, stock, checkout, account) ---------- */
 .sizes{display:flex;gap:10px;margin:6px 0 4px;flex-wrap:wrap}
@@ -2271,6 +2271,14 @@ function go(view, arg){
   var gen = ++viewRenderGen;
   $$('.view').forEach(function(v){ v.hidden = true; });
   $('#view-'+view).hidden = false;
+  /* The entrance animation belongs to the incoming view only: gate it
+     with a class go() hands to that one view and takes back once the
+     animation has run, so a view re-rendered while hidden can never
+     replay a translucent entrance over (or alongside) the live view,
+     and the outgoing view is always fully hidden before it starts. */
+  $$('.view').forEach(function(v){ v.classList.toggle('view-enter', v.id === 'view-' + view); });
+  clearTimeout(go._enterT);
+  go._enterT = setTimeout(function(){ var nv = $('#view-' + view); if (nv) nv.classList.remove('view-enter'); }, 900);
   $$('#mainnav button').forEach(function(b){ b.classList.toggle('on', b.getAttribute('data-nav')===view || (view==='product'&&b.getAttribute('data-nav')==='shop') || (view==='article'&&b.getAttribute('data-nav')==='journal')); });
   var deferred = null;
   if (view==='shop'){
@@ -4304,7 +4312,7 @@ void main() {
   var renderer = createRenderer(canvas);
   var reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
   var state = { progress: 0, time: 0 };
-  var frame = null;
+  var frame = null, flipStartedAt = 0;
   var rafId = 0, fadeRafId = 0, animStart = 0, fadeStart = 0;
   var cssFadeTimer = 0, resizeTimer = 0;
   var captureGen = 0, capturing = false, captureQueued = false, toggleBusy = false, captureFailStreak = 0;
@@ -4385,7 +4393,14 @@ void main() {
 
   function draw(){
     var f = currentFrame();
-    if (renderer && f) renderer.draw(f);
+    if (renderer && f){
+      /* A draw error must never orphan the canvas: if the renderer
+         throws mid-flip, the rAF chain would die with the snapshot
+         still composited over the page and no cleanup path left.
+         Route any failure through the normal flip teardown instead. */
+      try { renderer.draw(f); }
+      catch(e){ cancelAnim(); }
+    }
   }
 
   function stopRafs(){
@@ -4442,15 +4457,29 @@ void main() {
      sheet displayed, the stale snapshot would sit over the live page
      as a doubled, offset copy of it. A background capture pass
      clears any such leftover instead of leaving it up. A live
-     transition is never touched: during a flip frame is set, and
-     while the 2D sheet runs its rAF id is non-zero. */
+     transition is never touched while it is inside its animation
+     budget: a WebGL flip takes the spread plus the fade, the 2D
+     sheet takes its spread plus its dissolve. Past that budget the
+     transition is not live any more, its rAF chain is dead, and the
+     heal force-completes it through the normal teardown instead of
+     skipping it (the old heal skipped the canvas exactly while
+     frame was set, and the sheet exactly while its rAF id was
+     non-zero, which are precisely the stuck states). */
   function healStuckOverlays(){
+    if (frame && flipStartedAt && performance.now() - flipStartedAt > (INK_PARAMS.duration + FADE_OUT) * 1000 + 2500){
+      stopRafs();
+      hide();
+    }
     if (!frame && canvas.classList.contains('is-active')){
       canvas.classList.remove('is-active');
       canvas.style.opacity = '0';
     }
-    if (ink2d && !ink2dRaf && ink2d.style.display && ink2d.style.display !== 'none'){
+    if (ink2d && ink2d.style.display && ink2d.style.display !== 'none' &&
+        (!ink2dRaf || (ink2dStartedAt && performance.now() - ink2dStartedAt > 850 + 220 + 2000))){
+      if (ink2dRaf) cancelAnimationFrame(ink2dRaf);
+      ink2dRaf = 0;
       ink2d.style.display = 'none';
+      ink2d.style.opacity = '1';
     }
   }
 
@@ -4476,7 +4505,7 @@ void main() {
      plain 2D canvas, the theme flips beneath it at full cover, and the
      sheet dissolves. No snapshots, no WebGL, no network - it cannot
      silently degrade. */
-  var ink2d = null, ink2dRaf = 0;
+  var ink2d = null, ink2dRaf = 0, ink2dStartedAt = 0;
   /* Stop any running 2D ink sheet and hide it, so a new flip (of any
      kind) never stacks two overlays or leaves one behind. */
   function stopInk2D(){
@@ -4498,6 +4527,7 @@ void main() {
     var H = Math.max(1, Math.round(window.innerHeight * dpr));
     ink2d.width = W; ink2d.height = H;
     ink2d.style.opacity = '1'; ink2d.style.display = 'block';
+    ink2dStartedAt = performance.now();
     var ctx = ink2d.getContext('2d');
     if (!ctx){ applyTheme(to); ink2d.style.display = 'none'; return; }
     var c = point || toggleCenter();
@@ -4569,6 +4599,13 @@ void main() {
   function toggle(point){
     guardStart();
     stopInk2D();
+    /* A leftover CSS cross-fade would keep the live page's colours in
+       transition under the bleed, so the snapshot and the page would
+       disagree for the whole spread. A real flip supersedes it. */
+    if (root.classList.contains('theme-fade')){
+      root.classList.remove('theme-fade');
+      clearTimeout(cssFadeTimer);
+    }
     /* A flip that is already waiting on snapshots owns this tap:
        extra taps must not stack a second flip on top of it (the old
        fall-through cross-faded immediately, then the pending flip
@@ -4657,6 +4694,7 @@ void main() {
     var center = { x: rawCenter.x - renderer.rectLeft, y: rawCenter.y - renderer.rectTop };
     var maxDist = farthestCorner(center);
     frame = { from: from, to: to, center: center, maxDist: maxDist, seed: randomSeed() };
+    flipStartedAt = performance.now();
     state.progress = 0;
     state.time = 0;
 
@@ -4881,6 +4919,11 @@ void main() {
 
   /* ---------- Init ---------- */
   syncBtn();
+  /* The heal normally rides along with captures, but a stuck overlay
+     must clear within a bounded time even if no capture ever runs:
+     poll it cheaply, and re-check whenever the tab becomes visible. */
+  setInterval(healStuckOverlays, 1500);
+  document.addEventListener('visibilitychange', function(){ if (!document.hidden) healStuckOverlays(); });
   root.dataset.ink = renderer ? 'webgl' : 'css';
   canvas.style.opacity = '0';
   if (renderer){
