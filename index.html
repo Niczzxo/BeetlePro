@@ -434,6 +434,17 @@ nav.main button:hover,nav.main button.on{background:var(--chip)}
    disabled and the scroll position is pinned in JS, so a capture can
    never shove the page up or down. */
 html.ink-capturing{overflow-anchor:none}
+/* Scroll lock: while any overlay is open (bag drawer, sidebar menu,
+   welcome or help modal, image zoom) the page behind it must not
+   scroll. A background that keeps moving under the scrims' backdrop
+   blur smears into a doubled ghost of the content, and the visitor
+   loses the place they were reading. scrollbar-gutter:stable is
+   already set on html above, so the gutter stays reserved while the
+   scrollbar is hidden and locking cannot shift the layout. The
+   overlays' own inner scrollers (drawer items, menu nav, modal box)
+   keep their overflow and still scroll. */
+html.scroll-locked{overflow:hidden}
+html.scroll-locked body{overflow:hidden}
 /* ---------- cursor drag (reference video) ----------
    A black circular "‹ Drag ›" badge follows the mouse over every
    draggable track; the native cursor is hidden there (fine pointers
@@ -2616,8 +2627,8 @@ $$('.hot').forEach(function(h){
   var zb = $('#zoomBox'), zimg = $('#zbImg'), stage = $('#zbStage');
   var scale = 1, px = 0, py = 0, panning = false, psx = 0, psy = 0, pMoved = false;
   function apply(){ zimg.style.transform = 'translate(' + px + 'px,' + py + 'px) scale(' + scale + ')'; zimg.classList.toggle('zoomed', scale > 1); }
-  function openZoom(){ zimg.src = im.getAttribute('src'); scale = 1; px = 0; py = 0; apply(); zb.hidden = false; }
-  function closeZoom(){ zb.hidden = true; }
+  function openZoom(){ zimg.src = im.getAttribute('src'); scale = 1; px = 0; py = 0; apply(); zb.hidden = false; setScrollLock('zoom', true); }
+  function closeZoom(){ zb.hidden = true; setScrollLock('zoom', false); }
   frame.addEventListener('click', function(){ openZoom(); });
   $('#zbClose').addEventListener('click', closeZoom);
   stage.addEventListener('click', function(e){ if (e.target === stage) closeZoom(); });
@@ -3121,8 +3132,19 @@ $('#bagItems').addEventListener('click', function(e){
   var rm = e.target.closest('[data-rm]');
   if (rm){ delete bag[rm.getAttribute('data-rm')]; renderBag(); }
 });
-function openBag(){ $('#bagDrawer').classList.add('on'); $('#scrim').classList.add('on'); }
-function closeAll(){ $('#bagDrawer').classList.remove('on'); $('#scrim').classList.remove('on'); $('#welcomeModal').classList.remove('on'); $('#helpModal').classList.remove('on'); }
+/* Scroll lock (CSS: html.scroll-locked). Each overlay family owns
+   one flag (scrim: bag, welcome, help; menu: sidebar; zoom: image
+   zoom) and the root class is the OR of the three, so overlapping
+   opens and closes in any order can never unlock the page while an
+   overlay is still up, nor leave it locked after the last one
+   closes. */
+var scrollLocks = { scrim: false, menu: false, zoom: false };
+function applyScrollLock(){
+  document.documentElement.classList.toggle('scroll-locked', scrollLocks.scrim || scrollLocks.menu || scrollLocks.zoom);
+}
+function setScrollLock(name, on){ scrollLocks[name] = !!on; applyScrollLock(); }
+function openBag(){ $('#bagDrawer').classList.add('on'); $('#scrim').classList.add('on'); setScrollLock('scrim', true); }
+function closeAll(){ $('#bagDrawer').classList.remove('on'); $('#scrim').classList.remove('on'); $('#welcomeModal').classList.remove('on'); $('#helpModal').classList.remove('on'); setScrollLock('scrim', false); }
 $('#bagBtn').addEventListener('click', openBag);
 $('#footBag').addEventListener('click', openBag);
 $('#bagClose').addEventListener('click', closeAll);
@@ -3287,7 +3309,7 @@ sDrop.addEventListener('click', function(){ sDrop.hidden = true; });
 /* ================= welcome popup ================= */
 var welcomed = false;
 setTimeout(function(){
-  if (!welcomed){ welcomed = true; $('#welcomeModal').classList.add('on'); $('#scrim').classList.add('on'); }
+  if (!welcomed){ welcomed = true; $('#welcomeModal').classList.add('on'); $('#scrim').classList.add('on'); setScrollLock('scrim', true); }
 }, 1400);
 $('#welcomeClose').addEventListener('click', closeAll);
 $('#welcomeShop').addEventListener('click', function(){ closeAll(); go('shop'); });
@@ -3300,7 +3322,7 @@ function openHelp(key){
   var h = HELP[key]; if (!h) return;
   $('#helpTitle').textContent = h.t;
   $('#helpBody').innerHTML = h.b;
-  $('#helpModal').classList.add('on'); $('#scrim').classList.add('on');
+  $('#helpModal').classList.add('on'); $('#scrim').classList.add('on'); setScrollLock('scrim', true);
 }
 $('#helpClose').addEventListener('click', closeAll);
 
@@ -3359,8 +3381,8 @@ $('#footWish').addEventListener('click', function(){ var b = $('#wishBtn'); if (
 var footYear = $('#footYear'); if (footYear) footYear.textContent = new Date().getFullYear();
 
 /* ================= misc ================= */
-function openMenu(){ $('#sidenav').classList.add('on'); $('#mscrim').classList.add('on'); $('#burger').setAttribute('aria-expanded', 'true'); $('#sidenav').setAttribute('aria-hidden', 'false'); }
-function closeMenu(){ $('#sidenav').classList.remove('on'); $('#mscrim').classList.remove('on'); $('#burger').setAttribute('aria-expanded', 'false'); $('#sidenav').setAttribute('aria-hidden', 'true'); }
+function openMenu(){ $('#sidenav').classList.add('on'); $('#mscrim').classList.add('on'); $('#burger').setAttribute('aria-expanded', 'true'); $('#sidenav').setAttribute('aria-hidden', 'false'); setScrollLock('menu', true); }
+function closeMenu(){ $('#sidenav').classList.remove('on'); $('#mscrim').classList.remove('on'); $('#burger').setAttribute('aria-expanded', 'false'); $('#sidenav').setAttribute('aria-hidden', 'true'); setScrollLock('menu', false); }
 $('#burger').addEventListener('click', openMenu);
 $('#snavClose').addEventListener('click', closeMenu);
 $('#mscrim').addEventListener('click', closeMenu);
@@ -4352,6 +4374,24 @@ void main() {
     hide();
   }
 
+  /* Self-heal: outside an active flip, nothing the ink module owns
+     may cover the page. If an interrupted fade, a lost context or a
+     dropped animation ever left the WebGL canvas active or the 2D
+     sheet displayed, the stale snapshot would sit over the live page
+     as a doubled, offset copy of it. A background capture pass
+     clears any such leftover instead of leaving it up. A live
+     transition is never touched: during a flip frame is set, and
+     while the 2D sheet runs its rAF id is non-zero. */
+  function healStuckOverlays(){
+    if (!frame && canvas.classList.contains('is-active')){
+      canvas.classList.remove('is-active');
+      canvas.style.opacity = '0';
+    }
+    if (ink2d && !ink2dRaf && ink2d.style.display && ink2d.style.display !== 'none'){
+      ink2d.style.display = 'none';
+    }
+  }
+
   function crossFade(to){
     stopInk2D();
     guardStart();
@@ -4611,11 +4651,13 @@ void main() {
         scheduleCapture(RESIZE_DEBOUNCE_MS);
         return;
       }
+      healStuckOverlays();
       captureAll(false);
     }, delay);
   }
 
   function captureAll(forFlip){
+    healStuckOverlays();
     if (!renderer || renderer.lost || reducedMotion.matches) return;
     if (capturing || frame || root.classList.contains('theme-fade')){
       captureQueued = true;
