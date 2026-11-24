@@ -222,3 +222,24 @@ button:active{opacity:.72}
 #themeToggle.is-pending{background:var(--chip);cursor:wait;opacity:1}
 #themeToggle.is-pending .icon{animation:themeTapPulse .65s ease-in-out infinite alternate}
 @keyframes themeTapPulse{from{transform:scale(1)}to{transform:scale(1.18) rotate(12deg)}}
+
+/* No pull-to-refresh reload, synced from the live site: on the
+   live file overscroll-behavior:none sits on the root html rule.
+   Here that rule lives in the frozen legacy.css, so the single
+   added declaration is applied as an override (this file imports
+   after legacy.css). A stray pull on the 5 MB page otherwise
+   reloads the whole site and restarts the welcome modal and the
+   snapshot cycle from zero. */
+html{overscroll-behavior:none}
+
+/* Toast full hide, synced from the live site: the off state there
+   pairs the slide-down with opacity:0 and visibility:hidden (the
+   visibility flip delayed until the slide ends), because the
+   translate alone (80px) is less than a two-line pill's height
+   and left a strip of the old toast permanently visible at the
+   bottom of every view, which the next toast then slid up over.
+   Here the base .toast rule sits in the frozen legacy.css, so
+   only the changed declarations are applied as an override,
+   exactly like the .drawer override above. */
+.toast{opacity:0;visibility:hidden;transition:transform .45s cubic-bezier(.22,.8,.3,1),opacity .3s ease,visibility 0s linear .45s}
+.toast.on{opacity:1;visibility:visible;transition:transform .45s cubic-bezier(.22,.8,.3,1),opacity .3s ease,visibility 0s}

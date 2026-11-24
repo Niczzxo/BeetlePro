@@ -126,7 +126,11 @@ export default function DragSystem() {
         track,
         'click',
         (e: MouseEvent) => {
-          if (moved > 8) {
+          /* 16px of slop, not 8: a fingertip trembles several px during
+             an ordinary tap, and at 8px taps on rail cards were eaten
+             as drags, so the section's buttons felt dead. A deliberate
+             drag travels far past 16px before release. */
+          if (moved > 16) {
             e.preventDefault();
             e.stopPropagation();
             moved = 0;
