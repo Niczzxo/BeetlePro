@@ -1110,6 +1110,23 @@ export function initInkBleed(): void {
     ink2dRaf = 0;
     if (ink2d) ink2d.style.display = 'none';
   }
+  /* Self-heal: outside an active flip, nothing the ink module owns
+     may cover the page. If an interrupted fade, a lost context or a
+     dropped animation ever left the WebGL canvas active or the 2D
+     sheet displayed, the stale snapshot would sit over the live page
+     as a doubled, offset copy of it. A background capture pass
+     clears any such leftover instead of leaving it up. A live
+     transition is never touched: during a flip frame is set, and
+     while the 2D sheet runs its rAF id is non-zero. */
+  function healStuckOverlays(): void {
+    if (!frame && canvas.classList.contains('is-active')) {
+      canvas.classList.remove('is-active');
+      canvas.style.opacity = '0';
+    }
+    if (ink2d && !ink2dRaf && ink2d.style.display && ink2d.style.display !== 'none') {
+      ink2d.style.display = 'none';
+    }
+  }
   function inkFallback2D(to: ThemeName, point?: { x: number; y: number }): void {
     if (ink2dRaf) cancelAnimationFrame(ink2dRaf);
     if (!ink2d) {
@@ -1387,11 +1404,13 @@ export function initInkBleed(): void {
         scheduleCapture(RESIZE_DEBOUNCE_MS);
         return;
       }
+      healStuckOverlays();
       captureAll(false);
     }, delay);
   }
 
   function captureAll(forFlip: boolean): Promise<void> | undefined {
+    healStuckOverlays();
     if (!renderer || renderer.lost || reducedMotion.matches) return;
     if (capturing || frame || root.classList.contains('theme-fade')) {
       captureQueued = true;
