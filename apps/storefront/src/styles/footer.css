@@ -197,3 +197,28 @@ footer .fsep{color:rgba(244,242,237,.32)}
    is hidden. */
 html.scroll-locked{overflow:hidden}
 html.scroll-locked body{overflow:hidden}
+
+/* Tap responsiveness, synced from the live site: manipulation
+   removes the legacy double-tap zoom wait on interactive
+   controls, and a pressed button answers instantly with a
+   dim while its handler runs. In the live file both rules sit
+   in the main stylesheet next to the button reset; here they
+   are applied as overrides (this file imports after
+   legacy.css). The more specific gesture rules keep their own
+   touch action, exactly as on the live site: the drag tracks
+   are plain divs (never matched by the selector below) and
+   carry pan-y from legacy.css, the zoom photo is an img and
+   carries none, and the hero slider is a div with pan-y. The
+   footer newsletter button's own :active transform is more
+   specific than the opacity rule and still wins for transform;
+   both effects combine there, as they do on the live site.
+   The theme toggle's pending rules are the CSS half of the
+   live fix: while a tap waits on an on-demand snapshot capture
+   the button shows the chip background and a pulsing icon
+   (driven by features/theme/inkBleed.ts), and its opacity:1
+   outranks the pressed dim so the waiting state stays solid. */
+button,a,input,select,textarea,label,[role="button"]{touch-action:manipulation}
+button:active{opacity:.72}
+#themeToggle.is-pending{background:var(--chip);cursor:wait;opacity:1}
+#themeToggle.is-pending .icon{animation:themeTapPulse .65s ease-in-out infinite alternate}
+@keyframes themeTapPulse{from{transform:scale(1)}to{transform:scale(1.18) rotate(12deg)}}

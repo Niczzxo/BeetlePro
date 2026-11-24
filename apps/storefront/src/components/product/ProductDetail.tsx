@@ -209,7 +209,7 @@ export default function ProductDetail({
                 onPointerLeave={() => frameRef.current?.classList.remove('zooming')}
                 onClick={openZoom}
               >
-                <img id="pdImg" ref={imgRef} src={src} alt={p.name} style={{ opacity }} />
+                <img id="pdImg" ref={imgRef} src={src} alt={p.name} style={{ opacity }} decoding="async" />
               </div>
               <div className="thumbs" id="pdThumbs">
                 {p.gallery.map((g, i) => (

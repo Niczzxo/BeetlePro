@@ -211,7 +211,7 @@ export default function Header() {
           ? hits.length
             ? hits.map((p) => (
                 <button className="sd-item" data-product={p.id} key={p.id}>
-                  <img src={p.img} alt="" />
+                  <img src={p.img} alt="" decoding="async" />
                   <span>
                     <b>{p.name}</b>
                     <span>
