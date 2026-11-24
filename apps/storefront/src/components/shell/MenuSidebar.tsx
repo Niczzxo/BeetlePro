@@ -26,6 +26,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useMenu } from '../../features/menu/Menu';
+import { useScrollLock } from '../../features/scrollLock';
 import { useWishlist } from '../../features/wishlist/WishlistProvider';
 import { useToast } from '../../features/toast/Toast';
 
@@ -44,6 +45,10 @@ const NAV_LABELS: Record<(typeof NAV)[number], string> = {
 
 export default function MenuSidebar() {
   const { menuOpen, closeMenu } = useMenu();
+
+  /* The live site's scroll lock, menu flag: the page is locked
+     while the sidebar is open. */
+  useScrollLock('menu', menuOpen);
   const { ids: wishIds } = useWishlist();
   const { toast } = useToast();
   const router = useRouter();

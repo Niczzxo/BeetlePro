@@ -34,6 +34,7 @@ import type { StorefrontProduct } from '../../data/products';
 import { money } from '../../lib/format';
 import { defaultSize, pvars, useCart } from '../../features/cart/CartProvider';
 import { useWishlist } from '../../features/wishlist/WishlistProvider';
+import { useScrollLock } from '../../features/scrollLock';
 import ProductCard from '../home/ProductCard';
 import RevealSystem from '../home/RevealSystem';
 
@@ -157,6 +158,10 @@ export default function ProductDetail({
     zb.addEventListener('wheel', onWheel, { passive: false });
     return () => zb.removeEventListener('wheel', onWheel);
   }, []);
+
+  /* The live site's scroll lock, zoom flag: the page is locked
+     while the full-screen zoom box is open. */
+  useScrollLock('zoom', zbOpen);
 
   useEffect(() => {
     if (!zbOpen) return;

@@ -34,6 +34,7 @@ import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useCart } from '../../features/cart/CartProvider';
 import { useModals } from '../../features/modals/Modals';
+import { useScrollLock } from '../../features/scrollLock';
 import { useToast } from '../../features/toast/Toast';
 import { money } from '../../lib/format';
 
@@ -42,6 +43,11 @@ export default function BagDrawer() {
   const { modalOpen, closeModals } = useModals();
   const { toast } = useToast();
   const router = useRouter();
+
+  /* The live site's scroll lock, scrim flag: the drawer and the
+     modals share this one #scrim, so the page stays locked while
+     either is up and unlocks when the last one closes. */
+  useScrollLock('scrim', bagOpen || modalOpen);
 
   /* The legacy document keydown: Escape closes the drawer. */
   useEffect(() => {

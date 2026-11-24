@@ -184,3 +184,16 @@ footer .fsep{color:rgba(244,242,237,.32)}
    (this file imports after legacy.css). Play-state only, so
    nothing moves, resizes or reflows. */
 .anim-off .pendant,.anim-off .hot::after{animation-play-state:paused!important}
+
+/* Scroll lock, synced from the live site: while any overlay is
+   open (bag drawer, welcome or help modal, menu sidebar, image
+   zoom) the overlay owners set the scroll-locked class on the
+   root through features/scrollLock.ts, and the page behind the
+   overlay cannot scroll. In the live file these two rules sit in
+   the main stylesheet; here they are applied as an override
+   (this file imports after legacy.css). Nothing shifts: the
+   frozen legacy.css already carries scrollbar-gutter:stable on
+   html, so the scrollbar gutter stays reserved while overflow
+   is hidden. */
+html.scroll-locked{overflow:hidden}
+html.scroll-locked body{overflow:hidden}
