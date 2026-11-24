@@ -14,11 +14,15 @@
    there is no WebGL2 at all. Rim colours are matched to DOSTELO's
    own themes. All hardening is preserved: the 7 s capture cap,
    the 20 s capture watchdog, the toggle busy guard, the rAF
-   scroll guard and the bleed scroll pin, the fresh-pair rule,
-   and overlay cleanup on every path. The capture scroll pin is
-   flip-only, as on the live site: background captures never pin
-   and discard their results if the visitor scrolls mid-render
-   (see the capture scheduling note below).
+   scroll guard and the bleed scroll pin, the pair-usability
+   rule, and overlay cleanup on every path. The capture scroll
+   pin is flip-only, as on the live site: background captures
+   never pin, and since the scroll-independent capture round
+   they are no longer discarded for scrolling either; only a
+   fresh interaction or a hidden tab interrupts them, and every
+   round (failed, discarded or interrupted) spends from one
+   bounded attempt budget with progressive backoff (see the
+   capture scheduling note below).
 
    The one mechanical difference from the legacy: the legacy
    bundles html2canvas 1.4.1 inline as a base64 data URI (with
@@ -36,6 +40,7 @@ interface Snapshot {
   canvas: HTMLCanvasElement;
   scale: number;
   key: string;
+  headerPx: number;
 }
 
 interface Seed {
@@ -231,6 +236,8 @@ uniform vec2 uFromSize;
 uniform vec2 uToSize;
 uniform vec4 uFromMap;
 uniform vec4 uToMap;
+uniform vec2 uFromHdr;
+uniform vec2 uToHdr;
 uniform float uCanvasScale;
 uniform vec2 uRes;
 
@@ -290,8 +297,21 @@ float fbm5(vec2 p) {
   return s / 0.96875;
 }
 
-vec3 sampleDoc(sampler2D tex, vec2 size, vec4 map, vec2 devPx) {
+vec3 sampleDoc(sampler2D tex, vec2 size, vec4 map, vec2 hdr, vec2 devPx) {
   vec2 texPx = devPx * map.x + map.yz;
+  /* Header band re-anchor: the snapshot's sticky-header copy lives
+     in a trailer band at the foot of the texture (hdr.x is its first
+     row, hdr.y its height, both in texture px), not at the scroll
+     offset it was captured from. Viewport rows the live sticky
+     header covers sample the copy; every other row samples the
+     document at the current scroll. A snapshot therefore stays
+     pixel-true at ANY scroll position and never needs recapturing
+     just because the visitor moved. hdr.y = 0 disables the remap
+     (composite sources, headerless captures). */
+  if (map.w < 0.5 && hdr.y > 0.5) {
+    float row = devPx.y * map.x;
+    if (row < hdr.y) texPx.y = hdr.x + row;
+  }
   if (map.w > 0.5) texPx.y = size.y - texPx.y;
   vec2 uv = clamp(texPx, vec2(0.5), size - 0.5) / size;
   return texture(tex, uv).rgb;
@@ -308,11 +328,11 @@ void main() {
   float inner = R * (1.0 - A_SUM) + cleanup - FIBRE_PX - THIN_MAX_PX - uSoftness * 2.0;
   float outer = R * (1.0 + A_SUM) * (1.0 + TENDRIL_REACH * uTendril) + cleanup + FIBRE_PX + SPECK_PX + uSoftness * 2.0;
   if (d < inner) {
-    outColor = vec4(sampleDoc(uTo, uToSize, uToMap, devPx), 1.0);
+    outColor = vec4(sampleDoc(uTo, uToSize, uToMap, uToHdr, devPx), 1.0);
     return;
   }
   if (d > outer) {
-    outColor = vec4(sampleDoc(uFrom, uFromSize, uFromMap, devPx), 1.0);
+    outColor = vec4(sampleDoc(uFrom, uFromSize, uFromMap, uFromHdr, devPx), 1.0);
     return;
   }
 
@@ -370,8 +390,8 @@ void main() {
     cov = max(cov, smoothstep(th, th + 0.04, sn) * 0.75 * (1.0 - ahead));
   }
 
-  vec3 from = sampleDoc(uFrom, uFromSize, uFromMap, devPx);
-  vec3 to = sampleDoc(uTo, uToSize, uToMap, devPx);
+  vec3 from = sampleDoc(uFrom, uFromSize, uFromMap, uFromHdr, devPx);
+  vec3 to = sampleDoc(uTo, uToSize, uToMap, uToHdr, devPx);
   vec3 col = mix(from, to, cov);
 
   float rimX = (f + soft * 1.1) / (soft * 1.4 + 1.2);
@@ -389,6 +409,7 @@ interface TexEntry {
   height: number;
   scale: number;
   key: string;
+  headerPx: number;
 }
 
 interface Composite {
@@ -404,6 +425,8 @@ interface SamplerInfo {
   texture: WebGLTexture;
   width: number;
   height: number;
+  hdrStart: number;
+  hdrBand: number;
   ratio: number;
   offsetX: number;
   offsetY: number;
@@ -518,6 +541,8 @@ function createRenderer(cv: HTMLCanvasElement): Renderer | null {
         texture: c.texture,
         width: c.width,
         height: c.height,
+        hdrStart: 0,
+        hdrBand: 0,
         ratio: 1,
         offsetX: Math.round((originX - c.originX) * canvasScale),
         offsetY: Math.round((originY - c.originY) * canvasScale),
@@ -530,6 +555,8 @@ function createRenderer(cv: HTMLCanvasElement): Renderer | null {
       texture: t.texture,
       width: t.width,
       height: t.height,
+      hdrStart: t.headerPx ? t.height - t.headerPx : 0,
+      hdrBand: t.headerPx || 0,
       ratio: t.scale / canvasScale,
       offsetX: Math.floor(originX * t.scale + 0.5),
       offsetY: Math.floor(originY * t.scale + 0.5),
@@ -561,6 +588,8 @@ function createRenderer(cv: HTMLCanvasElement): Renderer | null {
     g.uniform2f(uniform('uToSize'), to.width, to.height);
     g.uniform4f(uniform('uFromMap'), from.ratio, from.offsetX, from.offsetY, from.flipY ? 1 : 0);
     g.uniform4f(uniform('uToMap'), to.ratio, to.offsetX, to.offsetY, to.flipY ? 1 : 0);
+    g.uniform2f(uniform('uFromHdr'), from.hdrStart, from.hdrBand);
+    g.uniform2f(uniform('uToHdr'), to.hdrStart, to.hdrBand);
     g.uniform1f(uniform('uCanvasScale'), canvasScale);
     g.uniform2f(uniform('uRes'), cv.width, cv.height);
     g.uniform2f(uniform('uCenter'), frame.center.x, frame.center.y);
@@ -649,7 +678,7 @@ function createRenderer(cv: HTMLCanvasElement): Renderer | null {
       if (lost) return;
       let entry = textures[snapshot.theme];
       if (!entry) {
-        entry = { texture: createTexture(), width: 0, height: 0, scale: 0, key: '' };
+        entry = { texture: createTexture(), width: 0, height: 0, scale: 0, key: '', headerPx: 0 };
         textures[snapshot.theme] = entry;
       }
       g.bindTexture(g.TEXTURE_2D, entry.texture);
@@ -658,6 +687,7 @@ function createRenderer(cv: HTMLCanvasElement): Renderer | null {
       entry.height = snapshot.canvas.height;
       entry.scale = snapshot.scale;
       entry.key = snapshot.key;
+      entry.headerPx = snapshot.headerPx || 0;
     },
     hasValid(theme, key) {
       const t = textures[theme];
@@ -738,28 +768,82 @@ export function initInkBleed(): void {
   }
   function documentSize(): { width: number; height: number } {
     const el = document.documentElement;
-    return { width: el.clientWidth, height: Math.max(el.scrollHeight, el.clientHeight) };
+    /* The body can be taller than the root element when a view
+       overflows it. Sizing the snapshot from the root alone then
+       clips its foot, so the ink reaches the bottom of the page
+       already torn, worst over the footer. Take the tallest of
+       the three so the snapshot always covers the whole
+       document, footer included. */
+    const bodyH = document.body ? document.body.scrollHeight : 0;
+    return { width: el.clientWidth, height: Math.max(el.scrollHeight, el.clientHeight, bodyH) };
+  }
+  function visibleViewEl(): HTMLElement | null {
+    const views = document.querySelectorAll('.view');
+    for (let i = 0; i < views.length; i++) {
+      if (!(views[i] as HTMLElement).hidden) return views[i] as HTMLElement;
+    }
+    return null;
   }
   function layoutKey(scale: number): string {
+    /* What a snapshot actually depends on: the visible view and its
+       routed content (product, article and shop category all live
+       in the route), the shop's own filter state, the document
+       WIDTH (a width change reflows everything) and the capture
+       scale. Document HEIGHT is deliberately NOT in the key:
+       growing or shrinking below the fold (footer accordion, late
+       images, the welcome modal) does not move a pixel the visitor
+       can see at flip time, and keying on it made every small
+       layout shift throw both snapshots away, restart the capture
+       loop and bring back the first-tap lag. Scroll is not in the
+       key either: the header band is re-anchored by the shader.
+       Height drift is handled where the pair is used instead: the
+       view's own height is drift-checked in pairUsable, and
+       whole-document drift only marks the pair stale for an idle
+       background refresh.
+       Port note: the routes here are real Next routes, not the
+       legacy hash, so the route component is location.pathname +
+       search; the shop filter state lives in React state, but it
+       is mirrored in the DOM (the active .fbtn carries data-filter
+       and the sort is the #shopSort select's value), so the key
+       reads it from there and matches the legacy shopCat, shopSort
+       and shopQuery triple. */
     const s = documentSize();
-    return s.width + 'x' + s.height + '@' + scale;
+    const v = visibleViewEl();
+    const id = v ? v.id : 'none';
+    let extra = '';
+    if (id === 'view-shop') {
+      const onBtn = document.querySelector('.fbtn.on');
+      const cat = onBtn ? onBtn.getAttribute('data-filter') || '' : '';
+      const sortEl = document.getElementById('shopSort') as HTMLSelectElement | null;
+      const sort = sortEl ? sortEl.value : '';
+      const q = new URLSearchParams(window.location.search).get('q') || '';
+      extra = '|' + cat + '~' + sort + '~' + q;
+    }
+    return id + '|' + window.location.pathname + window.location.search + extra + '|' + s.width + '@' + scale;
   }
 
   function capturePage(
     theme: ThemeName,
     scale: number,
     maxTextureSize: number,
-    atScrollY?: number,
   ): Promise<Snapshot> {
     const key = layoutKey(scale);
     const size = documentSize();
-    /* The scroll position this capture belongs to, handed down from
-       captureAll: the clone's stuck header copy is painted at exactly
-       this offset. Reading the live scroll position later (inside
-       onclone, after html2canvas has done its own scrolling of the
-       live page) can land a header-height away from the truth. */
-    const capY = typeof atScrollY === 'number' ? atScrollY : window.scrollY;
-    const safeScale = Math.min(scale, maxTextureSize / size.width, maxTextureSize / size.height);
+    /* The sticky header's copy is no longer glued at the capture
+       scroll offset (the old capY placement): that made every
+       snapshot pixel-true at exactly one scroll position, so any
+       scroll between capture and flip threw the pair away and the
+       flip paid two full captures. Instead the copy is painted
+       into a trailer band BELOW the document (rows size.height to
+       size.height + headerH, over the theme background the canvas
+       is filled with) and the shader re-anchors that band onto
+       the header rows of whatever scroll position a flip happens
+       at. headerH is the live header's rendered height, measured
+       here on the real page. */
+    const hdrEl = document.querySelector('header');
+    const headerH = hdrEl ? Math.round(hdrEl.getBoundingClientRect().height) : 0;
+    const totalH = size.height + headerH;
+    const safeScale = Math.min(scale, maxTextureSize / size.width, maxTextureSize / totalH);
     return loadHtml2Canvas().then(function (html2canvas) {
       return html2canvas(document.body, {
         scale: safeScale,
@@ -767,7 +851,7 @@ export function initInkBleed(): void {
         x: 0,
         y: 0,
         width: size.width,
-        height: size.height,
+        height: totalH,
         scrollX: 0,
         scrollY: 0,
         windowWidth: size.width,
@@ -787,8 +871,8 @@ export function initInkBleed(): void {
           for (let j = 0; j < chrome.length; j++) chrome[j].style.visibility = 'hidden';
           /* Freeze every transition/animation in the clone so computed styles are
              the theme's final values, reveal scroll-reveal items html2canvas
-             would otherwise catch mid-flight, and glue the sticky header at the
-             scroll offset this snapshot is taken from. */
+             would otherwise catch mid-flight, and glue a copy of the sticky
+             header into the trailer band below the document. */
           const st = doc.createElement('style');
           st.textContent =
             '*{transition:none!important;animation:none!important}' +
@@ -805,8 +889,10 @@ export function initInkBleed(): void {
                spread the whole page sat ~55px too high, snapping back
                down at the handoff (measured live). Instead: keep the
                original header in flow but invisible (its box preserves
-               the live layout exactly), and paint a copy at the stuck
-               position for this capture's scroll offset. */
+               the live layout exactly), and paint a copy into the
+               trailer band below the document, where it contaminates
+               no content row and the shader can re-anchor it onto the
+               header band of any scroll position at flip time. */
             const stuck = hdr.cloneNode(true) as HTMLElement;
             stuck.removeAttribute('id');
             const idEls = stuck.querySelectorAll('[id]');
@@ -814,10 +900,17 @@ export function initInkBleed(): void {
             const liveEls = stuck.querySelectorAll<HTMLElement>('[data-ink-live]');
             for (let li = 0; li < liveEls.length; li++) liveEls[li].style.visibility = 'hidden';
             stuck.style.position = 'absolute';
-            stuck.style.top = capY + 'px';
+            stuck.style.top = size.height + 'px';
             stuck.style.left = '0';
             stuck.style.right = '0';
             stuck.style.margin = '0';
+            /* Pin the copy to the header's exact rendered height so
+               its box cannot breathe by a pixel against the live one. */
+            const hcs =
+              doc.defaultView && doc.defaultView.getComputedStyle
+                ? doc.defaultView.getComputedStyle(hdr)
+                : null;
+            if (hcs && hcs.height && hcs.height !== 'auto') stuck.style.height = hcs.height;
             hdr.style.visibility = 'hidden';
             if (hdr.parentNode) hdr.parentNode.insertBefore(stuck, hdr.nextSibling);
           }
@@ -908,7 +1001,7 @@ export function initInkBleed(): void {
           }
         },
       }).then(function (cv) {
-        return { theme, canvas: cv, scale: safeScale, key };
+        return { theme, canvas: cv, scale: safeScale, key, headerPx: Math.round(headerH * safeScale) };
       });
     });
   }
@@ -929,20 +1022,33 @@ export function initInkBleed(): void {
     captureQueued = false,
     toggleBusy = false,
     captureFailStreak = 0;
-  /* Scroll position each snapshot was captured at. The snapshot bakes the
-     sticky header at that scroll offset, so a snapshot is only pixel-true
-     at (near) the scroll position it was taken from. */
-  const captureScroll: Record<string, number> = {};
-  /* The pair of snapshots may only bleed when BOTH were captured in one
-     pinned session at the layout AND scroll position of this exact flip.
-     A pair cached from any earlier moment (page load, a resize, another
-     scroll depth) can disagree with its twin or with the live page by a
-     few pixels - and because the ink canvas is opaque, any disagreement
-     shows as doubled text and overlapping chrome across the whole page
-     while the ink spreads. freshPairKey records the layout@scroll the
-     last completed pair was taken at; toggle() re-captures unless the
-     cached pair is exactly that fresh. */
-  let freshPairKey = '';
+  /* When the running flip started, for the heal watchdog: a flip
+     whose animation chain died mid-spread or mid-fade (a draw
+     error, a throttled webview) otherwise leaves frame set forever
+     and the snapshot composited over the page with no cleanup
+     path. Stamped at the single frame assignment in toggle(). */
+  let flipStartedAt = 0;
+  /* Pair bookkeeping for the scroll-independent snapshots. The
+     pair itself is keyed by layoutKey (view, route, shop state,
+     width, scale) and stays usable at any scroll position.
+     pairViewHeight tracks the visible view's height when the pair
+     was certified: drift past a small tolerance means the view
+     itself was rebuilt at a very different height (a re-rendered
+     grid, a different checkout), the pair counts as unusable and
+     is recaptured. pairDocHeight tracks the whole document:
+     drift there (a footer accordion opening, late media) only
+     marks the pair stale (pairStale) for a background refresh
+     when idle, and never blocks a flip. captureBlockedKey stops
+     the retry loop once a layout's attempt budget is spent, until
+     a real trigger (a new layout key) arrives, and
+     captureNotBefore carries the progressive backoff between
+     rounds so no trigger can bypass it by rescheduling early. */
+  let pairViewHeight = 0,
+    pairDocHeight = 0,
+    pairStale = false;
+  let captureBlockedKey = '',
+    lastCaptureKey = '',
+    captureNotBefore = 0;
   let bleedPin: { x: number; y: number; fn: () => void } | null = null;
   /* The ink canvas is a fixed, viewport-aligned snapshot taken at one
      scroll position. If the page scrolled during the spread, the canvas
@@ -1021,7 +1127,17 @@ export function initInkBleed(): void {
 
   function draw(): void {
     const f = currentFrame();
-    if (renderer && f) renderer.draw(f);
+    if (renderer && f) {
+      /* A draw error must never orphan the canvas: if the renderer
+         throws mid-flip, the rAF chain would die with the snapshot
+         still composited over the page and no cleanup path left.
+         Route any failure through the normal flip teardown instead. */
+      try {
+        renderer.draw(f);
+      } catch (e) {
+        cancelAnim();
+      }
+    }
   }
 
   function stopRafs(): void {
@@ -1102,7 +1218,8 @@ export function initInkBleed(): void {
      sheet dissolves. No snapshots, no WebGL, no network - it cannot
      silently degrade. */
   let ink2d: HTMLCanvasElement | null = null,
-    ink2dRaf = 0;
+    ink2dRaf = 0,
+    ink2dStartedAt = 0;
   /* Stop any running 2D ink sheet and hide it, so a new flip (of any
      kind) never stacks two overlays or leaves one behind. */
   function stopInk2D(): void {
@@ -1116,15 +1233,37 @@ export function initInkBleed(): void {
      sheet displayed, the stale snapshot would sit over the live page
      as a doubled, offset copy of it. A background capture pass
      clears any such leftover instead of leaving it up. A live
-     transition is never touched: during a flip frame is set, and
-     while the 2D sheet runs its rAF id is non-zero. */
+     transition is never touched while it is inside its animation
+     budget: a WebGL flip takes the spread plus the fade, the 2D
+     sheet takes its spread plus its dissolve. Past that budget the
+     transition is not live any more, its rAF chain is dead, and the
+     heal force-completes it through the normal teardown instead of
+     skipping it (the old heal skipped the canvas exactly while
+     frame was set, and the sheet exactly while its rAF id was
+     non-zero, which are precisely the stuck states). */
   function healStuckOverlays(): void {
+    if (
+      frame &&
+      flipStartedAt &&
+      performance.now() - flipStartedAt > (INK_PARAMS.duration + FADE_OUT) * 1000 + 2500
+    ) {
+      stopRafs();
+      hide();
+    }
     if (!frame && canvas.classList.contains('is-active')) {
       canvas.classList.remove('is-active');
       canvas.style.opacity = '0';
     }
-    if (ink2d && !ink2dRaf && ink2d.style.display && ink2d.style.display !== 'none') {
+    if (
+      ink2d &&
+      ink2d.style.display &&
+      ink2d.style.display !== 'none' &&
+      (!ink2dRaf || (ink2dStartedAt && performance.now() - ink2dStartedAt > 850 + 220 + 2000))
+    ) {
+      if (ink2dRaf) cancelAnimationFrame(ink2dRaf);
+      ink2dRaf = 0;
       ink2d.style.display = 'none';
+      ink2d.style.opacity = '1';
     }
   }
   function inkFallback2D(to: ThemeName, point?: { x: number; y: number }): void {
@@ -1145,6 +1284,7 @@ export function initInkBleed(): void {
     sheet.height = H;
     sheet.style.opacity = '1';
     sheet.style.display = 'block';
+    ink2dStartedAt = performance.now();
     const ctx = sheet.getContext('2d');
     if (!ctx) {
       applyTheme(to);
@@ -1240,6 +1380,13 @@ export function initInkBleed(): void {
   function toggle(point?: { x: number; y: number }): void {
     guardStart();
     stopInk2D();
+    /* A leftover CSS cross-fade would keep the live page's colours in
+       transition under the bleed, so the snapshot and the page would
+       disagree for the whole spread. A real flip supersedes it. */
+    if (root.classList.contains('theme-fade')) {
+      root.classList.remove('theme-fade');
+      window.clearTimeout(cssFadeTimer);
+    }
     /* A flip that is already waiting on snapshots owns this tap:
        extra taps must not stack a second flip on top of it (the old
        fall-through cross-faded immediately, then the pending flip
@@ -1253,22 +1400,19 @@ export function initInkBleed(): void {
     const key = layoutKey(scale);
     const interrupting = frame !== null;
 
-    /* Layout-safety guard: only a snapshot pair captured fresh for this
-       flip - same pinned session, this layout, this scroll position -
-       may bleed. Anything older is invalidated so the snapshots are
-       re-captured back-to-back at the current scroll position instead
-       of bleeding with stale frames that double across the whole page. */
-    if (renderer && !interrupting && freshPairKey !== key + '@' + window.scrollY) {
-      renderer.invalidate(to);
-      renderer.invalidate(getTheme());
-    }
-
+    /* A certified pair may bleed at ANY scroll position: both
+       snapshots render the document in document coordinates and
+       the shader re-anchors the sticky-header band, so a pair
+       captured at load (or at any other depth) is pixel-true for
+       a flip here. The old rule threw the pair away unless it had
+       been captured at this exact scroll offset, then recaptured
+       both themes pinned at the tap: that recapture is why the
+       first flip of a visit stalled for seconds while every later
+       flip was instant. Nothing is invalidated or recaptured
+       here any more; a missing pair takes the bounded wait path
+       below, as before. */
     const canAnimate =
-      renderer !== null &&
-      !renderer.lost &&
-      !reducedMotion.matches &&
-      renderer.hasValid(to, key) &&
-      (interrupting || renderer.hasValid(getTheme(), key));
+      renderer !== null && !renderer.lost && !reducedMotion.matches && pairUsable(key);
 
     if (!canAnimate) {
       /* The cross-fade fallback is only for genuinely unsupported cases
@@ -1339,6 +1483,7 @@ export function initInkBleed(): void {
     const center = { x: rawCenter.x - renderer.rectLeft, y: rawCenter.y - renderer.rectTop };
     const maxDist = farthestCorner(center);
     frame = { from, to, center, maxDist, seed: randomSeed() };
+    flipStartedAt = performance.now();
     state.progress = 0;
     state.time = 0;
 
@@ -1363,19 +1508,32 @@ export function initInkBleed(): void {
     startSpread();
   }
 
+  function visibleViewHeight(): number {
+    const v = visibleViewEl();
+    return v ? v.scrollHeight : 0;
+  }
+  /* A pair may bleed when both textures match the current layout
+     key and the visible view still has (nearly) the height it had
+     when the pair was certified. The tolerance absorbs rounding
+     and small in-view shifts; a rebuilt view drifts far past it
+     and recaptures instead. Scroll position is not consulted: the
+     pair is true at every scroll position by construction. */
+  function pairUsable(key: string): boolean {
+    if (!renderer || renderer.lost) return false;
+    const cur = getTheme();
+    if (!renderer.hasValid(cur, key) || !renderer.hasValid(otherTheme(cur), key)) return false;
+    if (pairViewHeight && Math.abs(visibleViewHeight() - pairViewHeight) > 24) return false;
+    return true;
+  }
+
   /* One snapshot capture, hard-capped. html2canvas renders the whole
      document on the main thread; on a phone a capture that stalls
      (huge layout, a wedged image, a hung loader) must never be
      allowed to stall the theme with it - after the cap the capture
      counts as failed and the flip falls back instead of waiting. */
-  function captureWithTimeout(
-    theme: ThemeName,
-    scale: number,
-    maxTex: number,
-    atScrollY?: number,
-  ): Promise<Snapshot> {
+  function captureWithTimeout(theme: ThemeName, scale: number, maxTex: number): Promise<Snapshot> {
     return Promise.race([
-      capturePage(theme, scale, maxTex, atScrollY),
+      capturePage(theme, scale, maxTex),
       new Promise<Snapshot>(function (_, reject) {
         window.setTimeout(function () {
           reject(new Error('snapshot capture timed out'));
@@ -1395,10 +1553,11 @@ export function initInkBleed(): void {
      is visible and the scroll has been idle for a moment (the stamp
      starts at module init, so the first capture after load waits
      for the same idle window instead of firing during the
-     visitor's first scroll). The scroll generation lets a running
-     background capture notice a fresh scroll and abandon its
-     results rather than store snapshots rendered at a position
-     the visitor has already left. A theme flip never waits on any
+     visitor's first scroll). A running background capture is
+     abandoned only when a fresh interaction lands or the tab
+     hides; scrolling alone no longer invalidates its results,
+     because the snapshots are true at any scroll position. A
+     theme flip never waits on any
      of this: it captures on demand through ensureSnapshots, which
      calls captureAll(true) directly, and only that path may pin. */
   let lastScrollStamp = performance.now();
@@ -1424,6 +1583,35 @@ export function initInkBleed(): void {
       { passive: true, capture: true },
     );
   });
+  /* A finger currently on the glass is a hard gate on top of the
+     stamps: a capture that starts mid-touch renders through the
+     visitor's gesture, and a pointer held still (reading a rail,
+     holding a press) produces no scroll or tap events to defer
+     on, so the stamps alone would let a round start under it. */
+  let touchingNow = false;
+  window.addEventListener(
+    'pointerdown',
+    function () {
+      touchingNow = true;
+    },
+    { passive: true, capture: true },
+  );
+  window.addEventListener(
+    'touchstart',
+    function () {
+      touchingNow = true;
+    },
+    { passive: true, capture: true },
+  );
+  ['pointerup', 'pointercancel', 'touchend', 'touchcancel'].forEach(function (type) {
+    window.addEventListener(
+      type,
+      function () {
+        touchingNow = false;
+      },
+      { passive: true, capture: true },
+    );
+  });
   window.addEventListener(
     'scroll',
     function () {
@@ -1435,10 +1623,30 @@ export function initInkBleed(): void {
   function scheduleCapture(delay: number): void {
     window.clearTimeout(resizeTimer);
     resizeTimer = window.setTimeout(function () {
+      /* A new layout key is a real trigger (view change, width
+         change, shop state change): it refills the attempt budget
+         and lifts a block. Without one, a layout whose budget is
+         spent stays quiet instead of re-rendering forever, and a
+         backoff already in force is honoured rather than bypassed
+         by an early reschedule. */
+      const k = layoutKey(renderScale());
+      if (k !== lastCaptureKey) {
+        lastCaptureKey = k;
+        captureFailStreak = 0;
+        captureBlockedKey = '';
+        captureNotBefore = 0;
+      }
+      if (captureBlockedKey && captureBlockedKey === k) return;
+      const now = performance.now();
+      if (now < captureNotBefore) {
+        scheduleCapture(captureNotBefore - now);
+        return;
+      }
       if (
         document.hidden ||
-        performance.now() - lastScrollStamp < 1200 ||
-        performance.now() - lastInteractionStamp < 1200
+        touchingNow ||
+        now - lastScrollStamp < 1200 ||
+        now - lastInteractionStamp < 1200
       ) {
         scheduleCapture(RESIZE_DEBOUNCE_MS);
         return;
@@ -1461,38 +1669,42 @@ export function initInkBleed(): void {
     let themes = [current, otherTheme(current)].filter(function (t) {
       return !renderer.hasValid(t, key);
     });
-    /* Pairs are certified per session (see freshPairKey): if one half is
-       missing, re-capture BOTH so the pair shares one pinned session,
-       one layout and one scroll position. */
+    /* If one half is missing, re-capture BOTH so the pair shares
+       one session and one layout. A pair that is merely stale
+       (document height drifted under it) or whose view was
+       rebuilt at a very different height is refreshed the same
+       way here, in the background, without ever blocking a flip
+       on the refresh. */
     if (themes.length === 1) themes = [current, otherTheme(current)];
+    if (
+      !themes.length &&
+      (pairStale || (pairViewHeight && Math.abs(visibleViewHeight() - pairViewHeight) > 24))
+    ) {
+      themes = [current, otherTheme(current)];
+    }
     captureQueued = false;
     if (!themes.length) return;
 
     const gen = ++captureGen;
     capturing = true;
-    /* Background captures watch the scroll generation: if the
-       visitor scrolls (or the tab hides) while a render runs, the
-       results belong to a scroll position that no longer exists,
-       so they are discarded and the capture re-queues itself for
-       the next idle window instead of the page ever being pinned
-       still. They watch the interaction generation the same way:
-       a tap landing mid-render discards the results and re-queues,
-       so the tap's own work (above all a flip capture) is never
-       stuck behind a background render. Flip captures ignore
-       both: they pin, so their scroll position cannot move while
-       they render, and they are the interaction. */
-    const startScrollGen = scrollGen;
+    /* A background round gives up only for reasons that would
+       make its results wrong or its cost land on a gesture: a
+       fresh interaction (checked between renders), or the tab
+       hiding mid-round. Scrolling no longer aborts a round: the
+       snapshots are document-true at any scroll position now, so
+       a round that started in an idle window runs to completion
+       and certifies a pair the next flip can use instantly. The
+       old scroll abort discarded nearly every round a reading
+       visitor ever triggered, and each retry paid another full
+       render on the main thread, which is what made scrolling
+       feel sticky across every page and section. Flip captures
+       ignore all of this: they pin, so nothing can move while
+       they render. */
     const startInteractionGen = interactionGen;
-    const startY = window.scrollY;
+    const startFailStreak = captureFailStreak;
     let aborted = false;
-    function scrolledAway(): boolean {
-      return (
-        !forFlip &&
-        (aborted ||
-          scrollGen !== startScrollGen ||
-          interactionGen !== startInteractionGen ||
-          document.hidden)
-      );
+    function interrupted(): boolean {
+      return !forFlip && (aborted || interactionGen !== startInteractionGen || document.hidden);
     }
     /* Watchdog: whatever happens below, the capture state MUST clear.
        A capture that never finishes would otherwise leave `capturing`
@@ -1528,26 +1740,23 @@ export function initInkBleed(): void {
     themes.forEach(function (theme) {
       chain = chain.then(function () {
         if (gen !== captureGen) return;
-        if (scrolledAway()) {
+        if (interrupted()) {
           aborted = true;
           captureQueued = true;
           return;
         }
-        const sy = window.scrollY;
-        return captureWithTimeout(theme, scale, renderer.maxTextureSize, startY).then(
+        return captureWithTimeout(theme, scale, renderer.maxTextureSize).then(
           function (snap) {
             if (gen !== captureGen) return;
-            if (scrolledAway()) {
+            if (interrupted()) {
               aborted = true;
               captureQueued = true;
               return;
             }
-            captureScroll[theme] = sy;
             if (snap.key !== layoutKey(renderScale())) {
               captureQueued = true;
               return;
             }
-            captureFailStreak = 0;
             renderer.upload(snap);
           },
           function (err) {
@@ -1574,21 +1783,44 @@ export function initInkBleed(): void {
         if (window.scrollX !== pinX || window.scrollY !== pinY) window.scrollTo(pinX, pinY);
       }
       root.classList.remove('ink-capturing');
-      /* Both themes on the GPU from this one session: the pair is
-         certified fresh for a flip at this layout and scroll
-         position. A background pair only certifies if the visitor
-         never scrolled and never tapped while it rendered; a
-         scrolled-away or interacted capture leaves any earlier
-         certification untouched. */
+      /* Both themes on the GPU from this one session: certify the
+         pair for this layout at any scroll position, remember the
+         heights it was taken at, clear the stale flag and refill
+         the attempt budget. */
       if (
         !aborted &&
         renderer!.hasValid(current, key) &&
-        renderer!.hasValid(otherTheme(current), key) &&
-        (forFlip || (scrollGen === startScrollGen && interactionGen === startInteractionGen))
+        renderer!.hasValid(otherTheme(current), key)
       ) {
-        freshPairKey = key + '@' + pinY;
+        pairViewHeight = visibleViewHeight();
+        pairDocHeight = documentSize().height;
+        pairStale = false;
+        captureFailStreak = 0;
+        captureNotBefore = 0;
+      } else if (!forFlip && captureFailStreak === startFailStreak) {
+        /* A round that ended without a pair and without a single
+           failed render (its results were discarded, or it was
+           interrupted between renders) still spends from the
+           budget: aborts count exactly like failures now, so the
+           retry loop below is always bounded. */
+        captureFailStreak++;
       }
-      if (captureQueued && captureFailStreak < 4) scheduleCapture(RESIZE_DEBOUNCE_MS);
+      if (captureQueued) {
+        if (captureFailStreak >= 4) {
+          /* Budget spent for this layout: stay quiet until a real
+             trigger (a new layout key) refills it. An existing
+             pair stays fully usable for flips meanwhile. */
+          captureBlockedKey = key;
+          captureQueued = false;
+        } else if (captureFailStreak > 0) {
+          /* Progressive backoff between rounds: 2s, then 4s,
+             then 8s (the idle gates apply on top when it fires). */
+          captureNotBefore = performance.now() + Math.min(15000, 1000 * Math.pow(2, captureFailStreak));
+          scheduleCapture(captureNotBefore - performance.now());
+        } else {
+          scheduleCapture(RESIZE_DEBOUNCE_MS);
+        }
+      }
     }
     return chain.then(done, done);
   }
@@ -1601,9 +1833,7 @@ export function initInkBleed(): void {
       (function check(): void {
         if (!renderer || renderer.lost) return resolve(false);
         const key = layoutKey(renderScale());
-        const cur = getTheme();
-        if (renderer.hasValid(cur, key) && renderer.hasValid(otherTheme(cur), key))
-          return resolve(true);
+        if (pairUsable(key)) return resolve(true);
         if (!capturing && !frame && !root.classList.contains('theme-fade')) captureAll(true);
         if (++tries > 50) return resolve(false); /* ~7.5s worst case */
         window.setTimeout(check, 150);
@@ -1613,6 +1843,13 @@ export function initInkBleed(): void {
 
   /* ---------- Init ---------- */
   syncBtn();
+  /* The heal normally rides along with captures, but a stuck overlay
+     must clear within a bounded time even if no capture ever runs:
+     poll it cheaply, and re-check whenever the tab becomes visible. */
+  window.setInterval(healStuckOverlays, 1500);
+  document.addEventListener('visibilitychange', function () {
+    if (!document.hidden) healStuckOverlays();
+  });
   root.dataset.ink = renderer ? 'webgl' : 'css';
   canvas.style.opacity = '0';
   if (renderer) {
@@ -1642,8 +1879,23 @@ export function initInkBleed(): void {
     }
     if (window.ResizeObserver) {
       new ResizeObserver(function () {
+        /* Whole-document height drift (a footer accordion opening,
+           late-loading media) does not invalidate the pair: it only
+           marks it stale, so an idle background refresh follows and
+           flips keep using the pair in the meantime. */
+        if (pairDocHeight && Math.abs(documentSize().height - pairDocHeight) > 4) pairStale = true;
         scheduleCapture(RESIZE_DEBOUNCE_MS);
       }).observe(document.body);
+    }
+    /* The bag count lives in the snapshot's header band: when it
+       changes, mark the pair stale for the same idle refresh
+       instead of letting flips recapture over a badge. */
+    const bagCountEl = document.getElementById('bagCount');
+    if (bagCountEl && window.MutationObserver) {
+      new MutationObserver(function () {
+        pairStale = true;
+        scheduleCapture(RESIZE_DEBOUNCE_MS);
+      }).observe(bagCountEl, { childList: true, characterData: true, attributes: true });
     }
     if (reducedMotion.addEventListener) {
       reducedMotion.addEventListener('change', function () {
