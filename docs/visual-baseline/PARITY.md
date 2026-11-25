@@ -275,6 +275,11 @@ which this environment cannot do; it stays open as the one
 verification step still owed before the legacy implementation
 is retired anywhere. Nothing else is pending.
 
+Closure note, 2026-11-26: that pass has now been run for home,
+shop, product and checkout in the light theme. See the Visual
+regression pass section at the end of this file and
+REGRESSION-2026-11-26.md in this folder.
+
 ## Phase 5 addition: visitor tracker and consent notice
 
 The storefront tracker (apps/storefront/src/features/tracking/)
@@ -309,3 +314,39 @@ only the legacy page-head, button and CSS variable language
 behaviour changed) and is excluded from search indexing
 because the link is personal. Details live in
 apps/storefront/README.md.
+
+## Visual regression pass (2026-11-26)
+
+The side by side pass owed since Phase 2 was run on
+2026-11-26 with the user's approval to launch the locally
+downloaded headless Chrome. Scope: light theme only (the user
+decided on 2026-11-26 to remove the dark theme from the
+storefront, so dark captures and toggle states were dropped).
+Pages: home, shop, product (sneakers-court) and checkout.
+Viewports: 1440, 768 and 390.
+
+The legacy reference was the exact live build, served locally
+from the bytes niczzxo.github.io served that night (MD5
+17be281c20ad69dc7dbac016def15130), because headless Chrome
+cannot traverse this machine's authenticated egress proxy.
+The preserved legacy file was used in a first round and
+superseded: it predates the footer redesign, which the port
+follows, so its heights differ by a constant footer delta.
+
+Result: match on all four pages at all three viewports. Page
+heights are identical in every pair (home 6843 / 10741 /
+10103, shop 3277 / 5856 / 4613, product 2190 / 3181 / 3628,
+checkout 2294 / 2879 / 3770). No real visual defects were
+found. The only differences are documented capture artifacts
+(hero poster rotation timing, lazy image paint timing, a
+Chrome full page sticky header seam on two port shop shots)
+and the known Phase 5 consent notice, which was declined
+before capture. Full method, per page verdicts and artifact
+evidence: REGRESSION-2026-11-26.md in this folder, with the
+24 screenshots under shots/.
+
+Coverage limit: the remaining BASELINE.md routes (account,
+journal, article, collections, contact, policy pages) and
+interaction states were not captured in this pass, so legacy
+retirement for those still rests on the chunk verifications
+above.
