@@ -43,13 +43,23 @@ export class ReportsService {
       (order) => inWindow(order.createdAt) && order.status !== 'cancelled',
     );
 
+    // Day boundaries follow the store timezone, Asia/Dhaka, as
+    // the Reports definitions require.
+    const dayKey = (iso: string) =>
+      new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Dhaka',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).format(new Date(iso));
+
     const byDay = new Map<string, SalesByDay>();
     const byProduct = new Map<string, TopProduct>();
     const byZone = new Map<string, ZoneSplit>();
     let revenueMinor = 0;
     for (const order of orders) {
       revenueMinor += order.total.amountMinor;
-      const date = order.createdAt.slice(0, 10);
+      const date = dayKey(order.createdAt);
       const day = byDay.get(date) ?? { date, orders: 0, revenueMinor: 0 };
       day.orders += 1;
       day.revenueMinor += order.total.amountMinor;
