@@ -13,15 +13,18 @@
    lines. Quantities cap at the product's stock, as the legacy
    commit does.
 
-   addWithFly() is the legacy addToBag() itself: with a source
-   photo and no reduced-motion preference, the paper plane flies
-   (features/cart/flyToBag) and the commit, and with it the bag
-   count and the confirmation toast, happen exactly at landing;
-   with a source photo under reduced motion the bag bumps and
-   the commit lands at once; with no source photo the commit
-   lands and the bag drawer opens. The commit's toast is the
-   legacy wording: "<name> (<colour>, size <size>) added to your
-   bag".
+   addWithFly() follows the live site's current addToBag(): the
+   commit, and with it the bag count and the confirmation toast,
+   happen immediately at tap time. With a source photo and no
+   reduced-motion preference, the paper plane then flies as
+   decoration only (features/cart/flyToBag); its landing bumps
+   the bag icon and releases that item's in-flight guard. While
+   one add for an item key is in flight, duplicate taps for the
+   same key are ignored. With a source photo under reduced
+   motion the bag bumps as the commit lands; with no source
+   photo the commit lands and the bag drawer opens. The commit's
+   toast is the legacy wording: "<name> (<colour>, size <size>)
+   added to your bag".
 
    The drawer open state and its totals live here too. totals is
    the legacy totals() itself (features/cart/totals.ts): the
@@ -41,6 +44,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
@@ -102,10 +106,10 @@ interface CartContextValue {
       size defaults to defaultSize(), colour to the first
       variant. Kept as the primitive addWithFly() commits with. */
   add: (id: string, qty: number, size?: string | null, colour?: string | null) => void;
-  /** The legacy addToBag(): flies the source photo to the bag
-      when one is given, commits at landing with the legacy
-      confirmation toast; opens the drawer when no source photo
-      is given. */
+  /** The live site's current addToBag(): commits at tap time
+      with the confirmation toast, then flies the source photo
+      to the bag as decoration when one is given; opens the
+      drawer when no source photo is given. */
   addWithFly: (
     id: string,
     qty: number,
@@ -165,6 +169,7 @@ export default function CartProvider({ children }: { children: ReactNode }) {
   const [bag, setBag] = useState<Record<string, number>>({});
   const [bagOpen, setBagOpen] = useState(false);
   const [freeAdmin, setFreeAdmin] = useState(false);
+  const addsInFlight = useRef<Set<string>>(new Set());
   const { toast } = useToast();
   const { firstOrderFree } = useAccount();
   const { zone, payMethod } = useCheckout();
@@ -211,15 +216,33 @@ export default function CartProvider({ children }: { children: ReactNode }) {
       const p = byId(id);
       if (!p || p.stock === 0) return;
       const col = colour || pvars(p)[0][0];
+      const key = id + '~' + (size || defaultSize(p)) + '~' + col;
+      /* One add per item at a time: while a tap's flight is still
+         in the air, further taps on the same item are ignored.
+         The count used to commit only when the plane landed
+         (about 1.3 seconds later), so a visitor who tapped again
+         thinking the first tap had failed added the same piece
+         two or three times over. */
+      if (addsInFlight.current.has(key)) return;
       const commit = () => {
         add(id, qty, size, colour);
         toast(p.name + ' (' + col + ', size ' + (size || defaultSize(p)) + ') added to your bag');
       };
       const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
       if (sourceEl && !reduced) {
-        /* flyToBag's land() bumps the bag; commit (and the count) happen there,
-           exactly at landing - never before. */
-        flyToBag(sourceEl, commit);
+        /* The count and the toast answer the tap immediately; the
+           flight is decoration only, and its landing just bumps
+           the bag icon (inside flyToBag's land()) and releases
+           the guard. The timeout is the live site's backstop in
+           case a flight ever fails to land. */
+        addsInFlight.current.add(key);
+        commit();
+        flyToBag(sourceEl, () => {
+          addsInFlight.current.delete(key);
+        });
+        window.setTimeout(() => {
+          addsInFlight.current.delete(key);
+        }, 3000);
       } else if (sourceEl) {
         bumpBag();
         commit();

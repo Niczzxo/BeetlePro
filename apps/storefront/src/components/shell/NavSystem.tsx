@@ -8,9 +8,9 @@
    - [data-add]      quick-add from a card: the legacy delegation
                      takes the card's .ph photo as the flight
                      source and calls addToBag(id, 1) with the
-                     legacy defaults; the paper plane flies and
-                     the commit lands with it (CartProvider's
-                     addWithFly)
+                     legacy defaults; the commit lands at tap
+                     time and the paper plane flies as decoration
+                     (CartProvider's addWithFly)
    - [data-nav]      view navigation: every legacy view now has
                      a route (home, shop, collections, journal,
                      about, contact, account, checkout, and the

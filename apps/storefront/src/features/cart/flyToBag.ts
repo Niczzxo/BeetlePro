@@ -9,7 +9,11 @@
    arc to the header bag button while a dotted trail draws the
    travelled part of the same curve; on landing the bag bumps,
    a ring pulses out of the bag button, and only then does the
-   caller's onLand commit the item. All timings, keyframes,
+   caller's onLand run. The item itself is already committed:
+   since the live site's instant-bag fix, CartProvider commits
+   the count and toast at tap time and this flight is decoration
+   only, so onLand just releases the caller's in-flight guard.
+   All timings, keyframes,
    easings and geometry below are the legacy values, unchanged:
    pop 140ms, fold 280ms, plane reveal 200ms starting 120ms
    before the flight, 46 flight frames over 900ms, arc height
@@ -64,11 +68,12 @@ function flyBezierY(x: number): number {
 
 /** The legacy flyToBag(sourceEl, onLand): fly a clone of the
     source photo to the header bag button; onLand runs exactly
-    at landing, never before. With no usable source or target,
-    or under reduced motion, it lands immediately (the caller
-    handles the reduced-motion bump itself, as the legacy
-    addToBag did; the in-flight reduced check below is the
-    legacy's own second guard). */
+    at landing, never before (it releases the caller's guard;
+    the bag commit already happened at tap time). With no usable
+    source or target, or under reduced motion, it lands
+    immediately (the caller handles the reduced-motion bump
+    itself, as the legacy addToBag did; the in-flight reduced
+    check below is the legacy's own second guard). */
 export function flyToBag(sourceEl: HTMLElement | null, onLand: () => void): void {
   const cartEl = document.getElementById('bagBtn');
   const duration = 900;

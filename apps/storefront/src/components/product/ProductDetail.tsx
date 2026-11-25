@@ -15,10 +15,11 @@
      and "Size - One size" for one-size pieces;
    - the quantity stepper caps at the smaller of 9 and stock;
    - Add to bag carries the chosen colour and size into the bag
-     the legacy way: the main photo (#pdImg) folds into the
-     paper plane and flies to the bag, and the commit lands
-     with it (CartProvider's addWithFly); the button keeps the
-     legacy label with the price);
+     the live site's current way: the commit lands at tap time,
+     and the main photo (#pdImg) then folds into the paper plane
+     and flies to the bag as decoration (CartProvider's
+     addWithFly); the button keeps the legacy label with the
+     price);
    - hover on the main photo magnifies it inside its frame with
      the zoom centre following the cursor, and a click opens the
      full-screen zoom box with click/wheel zoom and drag pan,
