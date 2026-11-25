@@ -30,10 +30,11 @@ import { LegalRepository } from './repositories/legal.repository';
  * the published fields and stores an immutable version;
  * unpublishing withdraws the document from the public endpoint.
  * The public endpoint serves published documents by slug. The
- * Next.js storefront policy routes cover shipping, returns and
- * warranty today (plus faq); wiring them, and adding routes for
- * privacy, terms and refund, is storefront work outside this
- * module. The static GitHub Pages site never reads this API.
+ * Next.js storefront policy routes (shipping, returns,
+ * warranty, privacy, terms, refund) render the published
+ * document for their slug and fall back to their built-in text
+ * when nothing is published. The static GitHub Pages site
+ * never reads this API.
  *
  * Permission note: the roles matrix gates this whole module
  * behind settings.manage; it defines no separate publish
