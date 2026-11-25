@@ -90,6 +90,21 @@ export const SEO_PAGES: Record<string, SeoPair> = {
     title: 'FAQ - Payments, Delivery, Sizes | Dostelo',
     desc: 'DOSTELO FAQ: pay with bKash, Nagad, Rocket, Upay, card or Cash on Delivery; delivery times, size exchanges and returns explained.',
   },
+  /* The three routes below were added with the legal wiring;
+     the legacy had no views (and so no SEO pairs) for them, so
+     these pairs follow the style of the four above. */
+  privacy: {
+    title: 'Privacy Policy - Dostelo',
+    desc: 'The DOSTELO privacy policy: we collect only what an order needs, never sell personal data, and send marketing messages only to newsletter subscribers.',
+  },
+  terms: {
+    title: 'Terms & Conditions - Dostelo',
+    desc: 'DOSTELO terms: prices in Bangladeshi taka, delivery set automatically from your address at checkout, free size exchange and 7-day returns.',
+  },
+  refund: {
+    title: 'Refund Policy - Dostelo',
+    desc: 'The DOSTELO refund policy: full refund for unworn pieces returned within 7 days, paid within 3 working days of the piece reaching us.',
+  },
 };
 
 /** The legacy applySEO() shop rule. */
