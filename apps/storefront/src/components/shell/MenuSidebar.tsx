@@ -22,10 +22,18 @@
    and then triggers the header buttons. The close button, a
    backdrop click and Escape (in MenuProvider) close it too.
    The panel animates with transform only, the backdrop with
-   opacity only, so nothing shifts layout. */
+   opacity only, so nothing shifts layout.
+
+   The mobile search fix adds a search field under the header
+   row: the header's own field is hidden at 1080px and below,
+   so this field feeds the SAME dropdown and the SAME shop
+   results flow through the shared search state
+   (features/search), and pressing Enter or choosing a result
+   closes the panel behind the navigation. */
 
 import { useRouter } from 'next/navigation';
 import { useMenu } from '../../features/menu/Menu';
+import { useSearch } from '../../features/search/Search';
 import { useScrollLock } from '../../features/scrollLock';
 import { useWishlist } from '../../features/wishlist/WishlistProvider';
 import { useToast } from '../../features/toast/Toast';
@@ -52,6 +60,7 @@ export default function MenuSidebar() {
   const { ids: wishIds } = useWishlist();
   const { toast } = useToast();
   const router = useRouter();
+  const { query, feed, hideDrop } = useSearch();
 
   /* The live fix's Wishlist row: close the menu, then run the
      header wish button's action (Header's onWishBtn). */
@@ -88,6 +97,33 @@ export default function MenuSidebar() {
               <path d="M6 6l12 12M18 6 6 18" />
             </svg>
           </button>
+        </div>
+        <div className="snav-search">
+          <label className="hsearch">
+            <svg className="icon" viewBox="0 0 24 24" style={{ width: 17, height: 17 }}>
+              <circle cx="11" cy="11" r="7" />
+              <path d="m20 20-3.8-3.8" />
+            </svg>
+            <input
+              id="searchInputM"
+              type="search"
+              placeholder="Search shirts, tees, jeans…"
+              autoComplete="off"
+              aria-label="Search products"
+              value={query}
+              onChange={(e) => {
+                feed(e.target.value, true);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  hideDrop();
+                  closeMenu();
+                  router.push('/shop?q=' + encodeURIComponent(query.trim()));
+                }
+              }}
+            />
+          </label>
         </div>
         <nav className="snav-nav" aria-label="Main">
           {NAV.map((key) => (

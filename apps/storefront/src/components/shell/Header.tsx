@@ -11,6 +11,11 @@
    search: a live dropdown of up to five pieces matching name or
    category, an empty state, Enter opening the shop with the
    query, and a click anywhere outside closing the dropdown.
+   The mobile search fix joins it: the header field is hidden
+   at 1080px and below, so a header search button (shown only
+   in that band and below) opens the sidebar menu, whose own
+   field feeds this same dropdown and the same shop flow
+   through the shared search state (features/search).
    Routing itself runs through NavSystem's delegation, as the
    legacy routed through its own document listener. The bag
    button opens the bag drawer, and the wishlist button follows
@@ -19,10 +24,11 @@
    route's ?wish=1 mode) with the saved pieces under the "Your
    wishlist" title. */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import ThemeToggle from './ThemeToggle';
 import { useMenu } from '../../features/menu/Menu';
+import { useSearch } from '../../features/search/Search';
 import { useCart } from '../../features/cart/CartProvider';
 import { useWishlist } from '../../features/wishlist/WishlistProvider';
 import { useToast } from '../../features/toast/Toast';
@@ -43,7 +49,8 @@ export default function Header() {
   const headerRef = useRef<HTMLElement>(null);
   const pathname = usePathname();
   const router = useRouter();
-  const { menuOpen, openMenu } = useMenu();
+  const { menuOpen, openMenu, closeMenu } = useMenu();
+  const { query, dropOpen, overMenu, feed, hideDrop } = useSearch();
   const { count, openBag } = useCart();
   const { count: wishCount, ids: wishIds } = useWishlist();
   const { toast } = useToast();
@@ -78,8 +85,6 @@ export default function Header() {
                 ? 'contact'
                 : null;
 
-  const [query, setQuery] = useState('');
-  const [dropOpen, setDropOpen] = useState(false);
   const q = query.trim();
   const hits = q
     ? products
@@ -117,11 +122,23 @@ export default function Header() {
     function onDocClick(e: MouseEvent) {
       const t = e.target as Element | null;
       if (!t || typeof t.closest !== 'function') return;
-      if (!t.closest('.hsearch') && !t.closest('#searchDrop')) setDropOpen(false);
+      if (!t.closest('.hsearch') && !t.closest('#searchDrop')) hideDrop();
     }
     document.addEventListener('click', onDocClick);
     return () => document.removeEventListener('click', onDocClick);
-  }, []);
+  }, [hideDrop]);
+
+  /* The mobile search fix's header button: the field itself is
+     hidden at 1080px and below, so the button (shown only in
+     that range) opens the sidebar menu and focuses its search
+     field once the panel has slid in, as the live fix does. */
+  function onSearchBtn() {
+    openMenu();
+    window.setTimeout(() => {
+      const f = document.getElementById('searchInputM');
+      if (f) f.focus();
+    }, 350);
+  }
 
   return (
     <header id="topbar" ref={headerRef}>
@@ -161,19 +178,29 @@ export default function Header() {
             autoComplete="off"
             value={query}
             onChange={(e) => {
-              setQuery(e.target.value);
-              setDropOpen(e.target.value.trim() !== '');
+              feed(e.target.value, false);
             }}
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
                 e.preventDefault();
-                setDropOpen(false);
+                hideDrop();
                 router.push('/shop?q=' + encodeURIComponent(q));
               }
             }}
           />
         </label>
         <div className="hicons">
+          <button
+            className="hbtn hsearch-btn"
+            id="searchBtn"
+            aria-label="Search"
+            onClick={onSearchBtn}
+          >
+            <svg className="icon" viewBox="0 0 24 24">
+              <circle cx="11" cy="11" r="7" />
+              <path d="m20 20-3.8-3.8" />
+            </svg>
+          </button>
           <ThemeToggle />
           <button className="hbtn" id="wishBtn" aria-label="Wishlist" onClick={onWishBtn}>
             <svg className="icon" viewBox="0 0 24 24">
@@ -202,10 +229,16 @@ export default function Header() {
         </div>
       </div>
       <div
-        className="searchdrop"
+        className={'searchdrop' + (overMenu ? ' over-menu' : '')}
         id="searchDrop"
         hidden={!dropOpen || !q}
-        onClick={() => setDropOpen(false)}
+        onClick={() => {
+          /* Choosing a result closes the menu behind the
+             navigation when the sidebar field fed the dropdown,
+             as the live fix's dropdown click does. */
+          hideDrop();
+          if (overMenu) closeMenu();
+        }}
       >
         {q
           ? hits.length

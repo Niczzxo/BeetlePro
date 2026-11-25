@@ -6,6 +6,7 @@ import Footer from '../components/shell/Footer';
 import BagDrawer from '../components/shell/BagDrawer';
 import MenuSidebar from '../components/shell/MenuSidebar';
 import MenuProvider from '../features/menu/Menu';
+import SearchProvider from '../features/search/Search';
 import CartProvider from '../features/cart/CartProvider';
 import AccountProvider from '../features/account/AccountProvider';
 import CheckoutProvider from '../features/checkout/CheckoutProvider';
@@ -89,13 +90,15 @@ export default function RootLayout({ children }: { children: ReactNode }) {
                 <ModalProvider>
                   <CartProvider>
                     <MenuProvider>
-                      <NavSystem />
-                      <Header />
-                      {children}
-                      <Footer />
-                      <BagDrawer />
-                      <MenuSidebar />
-                      <Tracker />
+                      <SearchProvider>
+                        <NavSystem />
+                        <Header />
+                        {children}
+                        <Footer />
+                        <BagDrawer />
+                        <MenuSidebar />
+                        <Tracker />
+                      </SearchProvider>
                     </MenuProvider>
                   </CartProvider>
                 </ModalProvider>

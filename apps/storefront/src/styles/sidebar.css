@@ -26,3 +26,18 @@
 .snav-link:hover{background:var(--chip)}
 .snav-foot{border-top:1px solid var(--line);padding:8px 0}
 .snav-foot .snav-link{border-bottom:0}
+
+/* Mobile search, synced from the live site fix: the sidebar
+   carries a second search field because the header field is
+   hidden at 1080px and below; it feeds the same dropdown and
+   the same shop flow (features/search). The header search
+   button exists only in that same range, where it opens this
+   menu. The dropdown is lifted above the menu while the
+   sidebar field feeds it. */
+.snav-search{padding:14px 22px 16px;border-bottom:1px solid var(--line)}
+.snav-search .hsearch{display:flex;width:100%;min-width:0}
+.hsearch-btn{display:none}
+.searchdrop.over-menu{z-index:120}
+@media (max-width:1080px){
+  .hsearch-btn{display:grid}
+}
