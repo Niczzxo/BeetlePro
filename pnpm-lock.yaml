@@ -190,6 +190,9 @@ importers:
       '@dostelo/types':
         specifier: workspace:*
         version: link:../../packages/types
+      '@dostelo/validation':
+        specifier: workspace:*
+        version: link:../../packages/validation
       lucide-react:
         specifier: ^1.79.0
         version: 1.79.0(@types/react@19.3.0)(react@19.3.1)
