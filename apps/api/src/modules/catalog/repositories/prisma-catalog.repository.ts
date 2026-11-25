@@ -1,11 +1,21 @@
 import { Injectable } from '@nestjs/common';
 import type { Category, Product, ProductVariant } from '@dostelo/types';
-import type { Category as CategoryRow, Prisma } from '@prisma/client';
+import type {
+  Category as CategoryRow,
+  Prisma,
+  ProductStatus as PrismaProductStatus,
+} from '@prisma/client';
 import { slugify } from '../../../common/parse-body';
-import { fromEnum, iso, toMoney } from '../../../prisma/prisma.helpers';
+import {
+  fromEnum,
+  iso,
+  toEnum,
+  toMoney,
+} from '../../../prisma/prisma.helpers';
 import { PrismaService, type Tx } from '../../../prisma/prisma.service';
 import {
   CatalogRepository,
+  type ProductReferenceCounts,
   type ProductWithVariant,
 } from './catalog.repository';
 
@@ -139,5 +149,138 @@ export class PrismaCatalogRepository extends CatalogRepository {
       },
     });
     return row ? this.toCategory(row) : null;
+  }
+
+  async createProduct(product: Product, tx?: Tx): Promise<Product> {
+    const row = await this.db(tx).product.create({
+      data: {
+        id: product.id,
+        slug: product.slug,
+        name: product.name,
+        categoryId: product.categoryId,
+        description: product.description,
+        status: toEnum<PrismaProductStatus>(product.status),
+        isFeatured: product.isFeatured,
+        isBestSeller: product.isBestSeller,
+        isNewArrival: product.isNewArrival,
+        tags: product.tags,
+        variants: {
+          create: product.variants.map((variant) => ({
+            id: variant.id,
+            sku: variant.sku,
+            name: variant.name,
+            size: variant.size,
+            colour: variant.colour,
+            priceMinor: variant.price.amountMinor,
+            compareAtPriceMinor:
+              variant.compareAtPrice?.amountMinor ?? null,
+            currency: 'BDT',
+            stock: variant.stock,
+            isActive: variant.isActive,
+          })),
+        },
+        media: {
+          create: product.media.map((item, index) => ({
+            id: item.id,
+            type: 'IMAGE',
+            url: item.url,
+            alt: item.alt,
+            position: index,
+          })),
+        },
+      },
+      include: PRODUCT_INCLUDE,
+    });
+    return this.toProduct(row);
+  }
+
+  async updateProduct(product: Product, tx?: Tx): Promise<Product> {
+    const db = this.db(tx);
+    await db.product.update({
+      where: { id: product.id },
+      data: {
+        slug: product.slug,
+        name: product.name,
+        categoryId: product.categoryId,
+        description: product.description,
+        status: toEnum<PrismaProductStatus>(product.status),
+        isFeatured: product.isFeatured,
+        isBestSeller: product.isBestSeller,
+        isNewArrival: product.isNewArrival,
+        tags: product.tags,
+      },
+    });
+    for (const variant of product.variants) {
+      const data = {
+        sku: variant.sku,
+        name: variant.name,
+        size: variant.size,
+        colour: variant.colour,
+        priceMinor: variant.price.amountMinor,
+        compareAtPriceMinor: variant.compareAtPrice?.amountMinor ?? null,
+        stock: variant.stock,
+        isActive: variant.isActive,
+      };
+      const existing = await db.productVariant.findUnique({
+        where: { id: variant.id },
+      });
+      if (existing) {
+        await db.productVariant.update({
+          where: { id: variant.id },
+          data,
+        });
+      } else {
+        await db.productVariant.create({
+          data: { id: variant.id, productId: product.id, currency: 'BDT', ...data },
+        });
+      }
+    }
+    await db.productMedia.deleteMany({
+      where: { productId: product.id },
+    });
+    for (const [index, item] of product.media.entries()) {
+      await db.productMedia.create({
+        data: {
+          id: item.id,
+          productId: product.id,
+          type: 'IMAGE',
+          url: item.url,
+          alt: item.alt,
+          position: index,
+        },
+      });
+    }
+    const row = await db.product.findUnique({
+      where: { id: product.id },
+      include: PRODUCT_INCLUDE,
+    });
+    return this.toProduct(row as ProductRow);
+  }
+
+  async deleteProduct(id: string, tx?: Tx): Promise<boolean> {
+    const db = this.db(tx);
+    const existing = await db.product.findUnique({ where: { id } });
+    if (!existing) return false;
+    await db.productMedia.deleteMany({ where: { productId: id } });
+    await db.productVariant.deleteMany({ where: { productId: id } });
+    await db.product.delete({ where: { id } });
+    return true;
+  }
+
+  async countProductReferences(
+    id: string,
+    tx?: Tx,
+  ): Promise<ProductReferenceCounts> {
+    const db = this.db(tx);
+    const [orderItems, cartItems, reservations, reviews] =
+      await Promise.all([
+        db.orderItem.count({ where: { productId: id } }),
+        db.cartItem.count({ where: { productId: id } }),
+        db.stockReservation.count({
+          where: { variant: { productId: id } },
+        }),
+        db.productReview.count({ where: { productId: id } }),
+      ]);
+    return { orderItems, cartItems, reservations, reviews };
   }
 }

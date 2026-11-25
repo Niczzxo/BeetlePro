@@ -38,6 +38,7 @@ import { PrismaCrmRepository } from '../modules/crm/repositories/prisma-crm.repo
 import { InProcessJobQueue } from '../modules/jobs/in-process-job-queue';
 import { CommunicationsService } from '../modules/communications/communications.service';
 import { PrismaCommunicationsRepository } from '../modules/communications/repositories/prisma-communications.repository';
+import { PrismaTemplatesRepository } from '../modules/communications/repositories/prisma-templates.repository';
 import { CommunicationProviderRegistry } from '../modules/communications/providers/communication-provider.registry';
 import { WhatsappProvider } from '../modules/communications/providers/whatsapp.provider';
 import { EmailProvider } from '../modules/communications/providers/email.provider';
@@ -66,6 +67,7 @@ import { ReportsService } from '../modules/reports/reports.service';
 import { WebsiteService } from '../modules/website/website.service';
 import { NotificationsService } from '../modules/notifications/notifications.service';
 import { PrismaNotificationsRepository } from '../modules/notifications/repositories/prisma-notifications.repository';
+import { PrismaStaffInvitationsRepository } from '../modules/staff/repositories/prisma-staff-invitations.repository';
 import { StaffService } from '../modules/staff/staff.service';
 import { IntegrationsService } from '../modules/integrations/integrations.service';
 import { LegalService } from '../modules/legal/legal.service';
@@ -179,10 +181,10 @@ export async function createPrismaTestContext(): Promise<PrismaTestContext> {
   const cartsRepo = new PrismaCartsRepository(prisma);
   const paymentsRepo = new PrismaPaymentsRepository(prisma);
 
-  const catalogService = new CatalogService(catalog);
-  const customers = new CustomersService(customersRepo);
   const auditRepo = new PrismaAuditRepository(prisma);
   const audit = new AuditService(auditRepo);
+  const catalogService = new CatalogService(catalog, audit);
+  const customers = new CustomersService(customersRepo);
   const inventoryService = new InventoryService(inventory, audit);
   const ordersService = new OrdersService(
     orders,
@@ -245,6 +247,7 @@ export async function createPrismaTestContext(): Promise<PrismaTestContext> {
     leadsRepo,
     visitors,
     audit,
+    new PrismaTemplatesRepository(prisma),
   );
   const cartRecoveryRepo = new PrismaCartRecoveryRepository(prisma);
   const cartRecovery = new CartRecoveryService(
@@ -294,13 +297,22 @@ export async function createPrismaTestContext(): Promise<PrismaTestContext> {
     paymentsRepo,
     payments,
     audit,
+    settings,
   );
   const supportRepo = new PrismaSupportRepository(prisma);
   const support = new SupportService(supportRepo, customersRepo, audit);
   const reviewsRepo = new PrismaReviewsRepository(prisma);
   const reviews = new ReviewsService(reviewsRepo, catalog, orders, audit);
   const marketingRepo = new PrismaMarketingRepository(prisma);
-  const marketing = new MarketingService(marketingRepo, audit);
+  const marketing = new MarketingService(
+    marketingRepo,
+    audit,
+    customersRepo,
+    leadsRepo,
+    cartRecoveryRepo,
+    intelligence,
+    communications,
+  );
   const loyaltyRepo = new PrismaLoyaltyRepository(prisma);
   const loyalty = new LoyaltyService(
     loyaltyRepo,
@@ -308,6 +320,7 @@ export async function createPrismaTestContext(): Promise<PrismaTestContext> {
     customersRepo,
     settings,
     audit,
+    bus,
   );
   const reports = new ReportsService(orders, paymentsRepo, cartRecoveryRepo);
   const website = new WebsiteService(settings, audit);
@@ -319,7 +332,13 @@ export async function createPrismaTestContext(): Promise<PrismaTestContext> {
     catalog,
     cartRecoveryRepo,
   );
-  const staff = new StaffService(adminsRepo, sessionsRepo, audit);
+  const staffInvitations = new PrismaStaffInvitationsRepository(prisma);
+  const staff = new StaffService(
+    adminsRepo,
+    sessionsRepo,
+    audit,
+    staffInvitations,
+  );
   const integrations = new IntegrationsService();
   const legalRepo = new PrismaLegalRepository(prisma);
   const legal = new LegalService(legalRepo, audit);

@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { AuditModule } from '../audit/audit.module';
 import { CartRecoveryModule } from '../cart-recovery/cart-recovery.module';
 import { AutomationController } from './automation.controller';
 import { AutomationService } from './automation.service';
@@ -9,7 +10,7 @@ import { AutomationService } from './automation.service';
  * and starts no jobs of its own.
  */
 @Module({
-  imports: [CartRecoveryModule],
+  imports: [CartRecoveryModule, AuditModule],
   controllers: [AutomationController],
   providers: [AutomationService],
   exports: [AutomationService],

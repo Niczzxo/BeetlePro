@@ -31,6 +31,9 @@ function toTicket(row: TicketRow): SupportTicket {
     status: fromEnum(row.status),
     assignedToId: row.assignedToId,
     orderNumber: row.orderNumber,
+    channel: (row.channel ?? 'admin') as SupportTicket['channel'],
+    firstRespondedAt: row.firstRespondedAt ? iso(row.firstRespondedAt) : null,
+    resolvedAt: row.resolvedAt ? iso(row.resolvedAt) : null,
     createdAt: iso(row.createdAt),
     updatedAt: iso(row.updatedAt),
   };
@@ -78,6 +81,9 @@ export class PrismaSupportRepository extends SupportRepository {
         status: toEnum<TicketRow['status']>(ticket.status),
         assignedToId: ticket.assignedToId,
         orderNumber: ticket.orderNumber,
+        channel: ticket.channel,
+        firstRespondedAt: ticket.firstRespondedAt ? new Date(ticket.firstRespondedAt) : null,
+        resolvedAt: ticket.resolvedAt ? new Date(ticket.resolvedAt) : null,
       },
     });
     return toTicket(row);
@@ -97,6 +103,9 @@ export class PrismaSupportRepository extends SupportRepository {
         status: toEnum<TicketRow['status']>(ticket.status),
         assignedToId: ticket.assignedToId,
         orderNumber: ticket.orderNumber,
+        channel: ticket.channel,
+        firstRespondedAt: ticket.firstRespondedAt ? new Date(ticket.firstRespondedAt) : null,
+        resolvedAt: ticket.resolvedAt ? new Date(ticket.resolvedAt) : null,
       },
     });
   }

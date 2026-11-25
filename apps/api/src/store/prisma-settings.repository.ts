@@ -14,7 +14,17 @@ const SETTINGS_ID = 'store';
  * profile, the delivery fee table and the loyalty rules. */
 type ExtendedSettings = Pick<
   StoreSettingsData,
-  'storeName' | 'contactEmail' | 'contactPhone' | 'deliveryFees' | 'loyaltyRules'
+  | 'storeName'
+  | 'contactEmail'
+  | 'contactPhone'
+  | 'deliveryFees'
+  | 'loyaltyRules'
+  | 'returnWindowDays'
+  | 'automationLeadEvaluationEnabled'
+  | 'allowCod'
+  | 'storeLive'
+  | 'slaTargets'
+  | 'loyaltyPointRules'
 >;
 
 function extendedFrom(
@@ -26,6 +36,13 @@ function extendedFrom(
     contactPhone: settings.contactPhone,
     deliveryFees: settings.deliveryFees,
     loyaltyRules: settings.loyaltyRules,
+    returnWindowDays: settings.returnWindowDays,
+    automationLeadEvaluationEnabled:
+      settings.automationLeadEvaluationEnabled,
+    allowCod: settings.allowCod,
+    storeLive: settings.storeLive,
+    slaTargets: settings.slaTargets,
+    loyaltyPointRules: settings.loyaltyPointRules,
   };
 }
 
@@ -70,6 +87,16 @@ export class PrismaSettingsRepository extends SettingsRepository {
       contactPhone: extended.contactPhone ?? fallback.contactPhone,
       deliveryFees: extended.deliveryFees ?? fallback.deliveryFees,
       loyaltyRules: extended.loyaltyRules ?? fallback.loyaltyRules,
+      returnWindowDays:
+        extended.returnWindowDays ?? fallback.returnWindowDays,
+      automationLeadEvaluationEnabled:
+        extended.automationLeadEvaluationEnabled ??
+        fallback.automationLeadEvaluationEnabled,
+      allowCod: extended.allowCod ?? fallback.allowCod,
+      storeLive: extended.storeLive ?? fallback.storeLive,
+      slaTargets: extended.slaTargets ?? fallback.slaTargets,
+      loyaltyPointRules:
+        extended.loyaltyPointRules ?? fallback.loyaltyPointRules,
     };
   }
 

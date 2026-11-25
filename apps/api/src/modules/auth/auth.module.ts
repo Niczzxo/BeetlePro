@@ -3,6 +3,7 @@ import { RateLimitGuard, RateLimiter } from '../../common/rate-limit';
 import { AuditModule } from '../audit/audit.module';
 import { CustomersModule } from '../customers/customers.module';
 import { AuthController } from './auth.controller';
+import { SecurityController } from './security.controller';
 import { AuthService } from './auth.service';
 import { TokenService } from './token.service';
 import { AdminsRepository } from './repositories/admins.repository';
@@ -21,7 +22,7 @@ import { PrismaSessionsRepository } from './repositories/prisma-sessions.reposit
  */
 @Module({
   imports: [CustomersModule, AuditModule],
-  controllers: [AuthController],
+  controllers: [AuthController, SecurityController],
   providers: [
     AuthService,
     TokenService,

@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   Param,
+  Post,
   Put,
   UseGuards,
 } from '@nestjs/common';
@@ -14,13 +15,16 @@ import {
 import { AuthGuard, PermissionsGuard } from '../../common/auth/guards';
 import type { AuthPrincipal } from '../../common/auth/principal';
 import {
+  legalDocumentCreateSchema,
   legalDocumentUpdateSchema,
+  type LegalDocumentCreate,
   type LegalDocumentUpdate,
 } from './dto/legal.dto';
 import { LegalService } from './legal.service';
 
-/** Legal & Compliance: the editable legal documents, behind
- * settings.manage as in the sidebar registry. */
+/** Legal & Compliance: documents with draft and published
+ * copies, version history and custom documents, behind
+ * settings.manage as the roles matrix defines for this module. */
 @Controller('v1/admin/legal')
 export class LegalController {
   constructor(private readonly legal: LegalService) {}
@@ -30,6 +34,27 @@ export class LegalController {
   @RequirePermission('settings.manage')
   async list() {
     return { items: await this.legal.list() };
+  }
+
+  @Get('sync-status')
+  @UseGuards(AuthGuard, PermissionsGuard)
+  @RequirePermission('settings.manage')
+  async syncStatus() {
+    return this.legal.syncStatus();
+  }
+
+  @Post()
+  @UseGuards(AuthGuard, PermissionsGuard)
+  @RequirePermission('settings.manage')
+  async create(
+    @Body() body: unknown,
+    @CurrentUser() user: AuthPrincipal | null,
+  ) {
+    const dto: LegalDocumentCreate = parseBody(
+      legalDocumentCreateSchema,
+      body,
+    );
+    return this.legal.create(dto, user);
   }
 
   @Get(':slug')
@@ -52,5 +77,43 @@ export class LegalController {
       body,
     );
     return this.legal.update(slug, dto, user);
+  }
+
+  @Post(':slug/publish')
+  @UseGuards(AuthGuard, PermissionsGuard)
+  @RequirePermission('settings.manage')
+  async publish(
+    @Param('slug') slug: string,
+    @CurrentUser() user: AuthPrincipal | null,
+  ) {
+    return this.legal.publish(slug, user);
+  }
+
+  @Post(':slug/unpublish')
+  @UseGuards(AuthGuard, PermissionsGuard)
+  @RequirePermission('settings.manage')
+  async unpublish(
+    @Param('slug') slug: string,
+    @CurrentUser() user: AuthPrincipal | null,
+  ) {
+    return this.legal.unpublish(slug, user);
+  }
+
+  @Get(':slug/versions')
+  @UseGuards(AuthGuard, PermissionsGuard)
+  @RequirePermission('settings.manage')
+  async versions(@Param('slug') slug: string) {
+    return { items: await this.legal.listVersions(slug) };
+  }
+
+  @Post(':slug/versions/:versionId/restore')
+  @UseGuards(AuthGuard, PermissionsGuard)
+  @RequirePermission('settings.manage')
+  async restore(
+    @Param('slug') slug: string,
+    @Param('versionId') versionId: string,
+    @CurrentUser() user: AuthPrincipal | null,
+  ) {
+    return this.legal.restoreVersion(slug, versionId, user);
   }
 }

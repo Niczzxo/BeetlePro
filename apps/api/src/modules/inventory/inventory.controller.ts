@@ -34,6 +34,33 @@ export class InventoryController {
     return { items: await this.inventory.listStock(productId) };
   }
 
+  /** The movement ledger. Declared before :variantId so the
+   * literal segment wins over the parameter route. */
+  @Get('movements')
+  @UseGuards(AuthGuard, PermissionsGuard)
+  @RequirePermission('inventory.read')
+  async listMovements(
+    @Query('variantId') variantId?: string,
+    @Query('productId') productId?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const parsedLimit = limit ? Number.parseInt(limit, 10) : NaN;
+    return {
+      items: await this.inventory.listMovements({
+        variantId: variantId || undefined,
+        productId: productId || undefined,
+        from: from || undefined,
+        to: to || undefined,
+        limit:
+          Number.isFinite(parsedLimit) && parsedLimit > 0
+            ? Math.min(parsedLimit, 2000)
+            : undefined,
+      }),
+    };
+  }
+
   @Get(':variantId')
   @UseGuards(AuthGuard, PermissionsGuard)
   @RequirePermission('inventory.read')

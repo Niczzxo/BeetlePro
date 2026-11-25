@@ -12,6 +12,9 @@ import { WhatsappProvider } from './providers/whatsapp.provider';
 import { CommunicationsRepository } from './repositories/communications.repository';
 import { InMemoryCommunicationsRepository } from './repositories/in-memory-communications.repository';
 import { PrismaCommunicationsRepository } from './repositories/prisma-communications.repository';
+import { TemplatesRepository } from './repositories/templates.repository';
+import { InMemoryTemplatesRepository } from './repositories/in-memory-templates.repository';
+import { PrismaTemplatesRepository } from './repositories/prisma-templates.repository';
 
 /**
  * Communications module (Phase 6): the Communication Center.
@@ -35,6 +38,12 @@ import { PrismaCommunicationsRepository } from './repositories/prisma-communicat
       useClass: process.env.DATABASE_URL
         ? PrismaCommunicationsRepository
         : InMemoryCommunicationsRepository,
+    },
+    {
+      provide: TemplatesRepository,
+      useClass: process.env.DATABASE_URL
+        ? PrismaTemplatesRepository
+        : InMemoryTemplatesRepository,
     },
   ],
   exports: [CommunicationsService, CommunicationsRepository],

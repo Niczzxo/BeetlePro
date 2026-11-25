@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Post,
@@ -17,8 +18,12 @@ import { AuthGuard, PermissionsGuard } from '../../common/auth/guards';
 import type { AuthPrincipal } from '../../common/auth/principal';
 import {
   createReviewSchema,
+  reviewReplySchema,
+  reviewRequestSchema,
   reviewStatusSchema,
   type CreateReview,
+  type ReviewReplyCreate,
+  type ReviewRequestCreate,
   type ReviewStatusUpdate,
 } from './dto/reviews.dto';
 import { ReviewsService } from './reviews.service';
@@ -62,6 +67,40 @@ export class ReviewsController {
     @CurrentUser() user: AuthPrincipal | null,
   ) {
     const dto: ReviewStatusUpdate = parseBody(reviewStatusSchema, body);
-    return this.reviews.setStatus(id, dto.status, user);
+    return this.reviews.setStatus(id, dto.status, user, dto.reason);
+  }
+
+  @Post('requests')
+  @UseGuards(AuthGuard, PermissionsGuard)
+  @RequirePermission('marketing.edit')
+  async request(
+    @Body() body: unknown,
+    @CurrentUser() user: AuthPrincipal | null,
+  ) {
+    const dto: ReviewRequestCreate = parseBody(reviewRequestSchema, body);
+    return this.reviews.requestReview(dto, user);
+  }
+
+  @Post(':id/replies')
+  @UseGuards(AuthGuard, PermissionsGuard)
+  @RequirePermission('marketing.edit')
+  async addReply(
+    @Param('id') id: string,
+    @Body() body: unknown,
+    @CurrentUser() user: AuthPrincipal | null,
+  ) {
+    const dto: ReviewReplyCreate = parseBody(reviewReplySchema, body);
+    return this.reviews.addReply(id, dto.body, user);
+  }
+
+  @Delete(':id/replies/:replyId')
+  @UseGuards(AuthGuard, PermissionsGuard)
+  @RequirePermission('marketing.edit')
+  async deleteReply(
+    @Param('id') id: string,
+    @Param('replyId') replyId: string,
+    @CurrentUser() user: AuthPrincipal | null,
+  ) {
+    return this.reviews.deleteReply(id, replyId, user);
   }
 }

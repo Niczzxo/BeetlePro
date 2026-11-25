@@ -1,6 +1,11 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
 import { PrismaService, type Tx } from '../../../prisma/prisma.service';
-import type { StockRecord } from '../../../store/in-memory.store';
+import type {
+  StockMovement,
+  StockMovementFilter,
+  StockRecord,
+} from '../../../store/in-memory.store';
 import {
   InventoryRepository,
   type StockLine,
@@ -35,6 +40,58 @@ export class PrismaInventoryRepository extends InventoryRepository {
       _sum: { quantity: true },
     });
     return aggregate._sum.quantity ?? 0;
+  }
+
+  /** Appends one movement to the ledger inside the caller's
+   * transaction, so a stock change and its record commit or
+   * roll back together. */
+  private async recordMovement(
+    movement: Omit<StockMovement, 'id' | 'createdAt'>,
+    tx?: Tx,
+  ): Promise<void> {
+    await this.db(tx).stockMovement.create({
+      data: {
+        id: randomUUID(),
+        variantId: movement.variantId,
+        productId: movement.productId,
+        type: movement.type,
+        deltaOnHand: movement.deltaOnHand,
+        deltaReserved: movement.deltaReserved,
+        onHandAfter: movement.onHandAfter,
+        reservedAfter: movement.reservedAfter,
+        reference: movement.reference,
+      },
+    });
+  }
+
+  async listMovements(
+    filter: StockMovementFilter,
+    tx?: Tx,
+  ): Promise<StockMovement[]> {
+    const rows = await this.db(tx).stockMovement.findMany({
+      where: {
+        variantId: filter.variantId,
+        productId: filter.productId,
+        createdAt: {
+          gte: filter.from ? new Date(filter.from) : undefined,
+          lte: filter.to ? new Date(filter.to) : undefined,
+        },
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: filter.limit ?? 500,
+    });
+    return rows.map((row) => ({
+      id: row.id,
+      variantId: row.variantId,
+      productId: row.productId,
+      type: row.type as StockMovement['type'],
+      deltaOnHand: row.deltaOnHand,
+      deltaReserved: row.deltaReserved,
+      onHandAfter: row.onHandAfter,
+      reservedAfter: row.reservedAfter,
+      reference: row.reference,
+      createdAt: row.createdAt.toISOString(),
+    }));
   }
 
   async getStock(
@@ -103,6 +160,19 @@ export class PrismaInventoryRepository extends InventoryRepository {
       where: { id: variantId },
       data: { stock: next },
     });
+    await this.recordMovement(
+      {
+        variantId,
+        productId: updated.productId,
+        type: 'adjustment',
+        deltaOnHand: delta,
+        deltaReserved: 0,
+        onHandAfter: updated.stock,
+        reservedAfter: reserved,
+        reference: null,
+      },
+      tx,
+    );
     return { productId: updated.productId, onHand: updated.stock, reserved };
   }
 
@@ -136,14 +206,52 @@ export class PrismaInventoryRepository extends InventoryRepository {
           state: 'ACTIVE',
         },
       });
+      const record = await this.getStock(line.variantId, tx);
+      if (record) {
+        await this.recordMovement(
+          {
+            variantId: line.variantId,
+            productId: record.productId,
+            type: 'reserve',
+            deltaOnHand: 0,
+            deltaReserved: line.quantity,
+            onHandAfter: record.onHand,
+            reservedAfter: record.reserved,
+            reference: orderId,
+          },
+          tx,
+        );
+      }
     }
   }
 
   async release(orderId: string, tx?: Tx): Promise<void> {
-    await this.db(tx).stockReservation.updateMany({
+    const db = this.db(tx);
+    const active = await db.stockReservation.findMany({
+      where: { orderId, state: 'ACTIVE' },
+    });
+    await db.stockReservation.updateMany({
       where: { orderId, state: 'ACTIVE' },
       data: { state: 'RELEASED' },
     });
+    for (const reservation of active) {
+      const record = await this.getStock(reservation.variantId, tx);
+      if (record) {
+        await this.recordMovement(
+          {
+            variantId: reservation.variantId,
+            productId: record.productId,
+            type: 'release',
+            deltaOnHand: 0,
+            deltaReserved: -reservation.quantity,
+            onHandAfter: record.onHand,
+            reservedAfter: record.reserved,
+            reference: orderId,
+          },
+          tx,
+        );
+      }
+    }
   }
 
   async finalize(orderId: string, tx?: Tx): Promise<void> {
@@ -161,5 +269,23 @@ export class PrismaInventoryRepository extends InventoryRepository {
       where: { orderId, state: 'ACTIVE' },
       data: { state: 'FINALIZED' },
     });
+    for (const reservation of active) {
+      const record = await this.getStock(reservation.variantId, tx);
+      if (record) {
+        await this.recordMovement(
+          {
+            variantId: reservation.variantId,
+            productId: record.productId,
+            type: 'finalize',
+            deltaOnHand: -reservation.quantity,
+            deltaReserved: -reservation.quantity,
+            onHandAfter: record.onHand,
+            reservedAfter: record.reserved,
+            reference: orderId,
+          },
+          tx,
+        );
+      }
+    }
   }
 }

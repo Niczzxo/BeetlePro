@@ -37,6 +37,7 @@ import { InMemoryCrmRepository } from '../modules/crm/repositories/in-memory-crm
 import { InProcessJobQueue } from '../modules/jobs/in-process-job-queue';
 import { CommunicationsService } from '../modules/communications/communications.service';
 import { InMemoryCommunicationsRepository } from '../modules/communications/repositories/in-memory-communications.repository';
+import { InMemoryTemplatesRepository } from '../modules/communications/repositories/in-memory-templates.repository';
 import { CommunicationProviderRegistry } from '../modules/communications/providers/communication-provider.registry';
 import { WhatsappProvider } from '../modules/communications/providers/whatsapp.provider';
 import { EmailProvider } from '../modules/communications/providers/email.provider';
@@ -65,6 +66,7 @@ import { ReportsService } from '../modules/reports/reports.service';
 import { WebsiteService } from '../modules/website/website.service';
 import { NotificationsService } from '../modules/notifications/notifications.service';
 import { InMemoryNotificationsRepository } from '../modules/notifications/repositories/in-memory-notifications.repository';
+import { InMemoryStaffInvitationsRepository } from '../modules/staff/repositories/in-memory-staff-invitations.repository';
 import { StaffService } from '../modules/staff/staff.service';
 import { IntegrationsService } from '../modules/integrations/integrations.service';
 import { LegalService } from '../modules/legal/legal.service';
@@ -150,10 +152,10 @@ export function createTestContext(): TestContext {
   const cartsRepo = new InMemoryCartsRepository(db);
   const paymentsRepo = new InMemoryPaymentsRepository(db);
 
-  const catalogService = new CatalogService(catalog);
-  const customers = new CustomersService(customersRepo);
   const auditRepo = new InMemoryAuditRepository(db);
   const audit = new AuditService(auditRepo);
+  const catalogService = new CatalogService(catalog, audit);
+  const customers = new CustomersService(customersRepo);
   const inventoryService = new InventoryService(inventory, audit);
   const ordersService = new OrdersService(orders, inventory, bus, audit);
   const cartsService = new CartsService(
@@ -213,6 +215,7 @@ export function createTestContext(): TestContext {
     leadsRepo,
     visitors,
     audit,
+    new InMemoryTemplatesRepository(db),
   );
   const cartRecoveryRepo = new InMemoryCartRecoveryRepository(db);
   const cartRecovery = new CartRecoveryService(
@@ -261,13 +264,22 @@ export function createTestContext(): TestContext {
     paymentsRepo,
     payments,
     audit,
+    settings,
   );
   const supportRepo = new InMemorySupportRepository(db);
   const support = new SupportService(supportRepo, customersRepo, audit);
   const reviewsRepo = new InMemoryReviewsRepository(db);
   const reviews = new ReviewsService(reviewsRepo, catalog, orders, audit);
   const marketingRepo = new InMemoryMarketingRepository(db);
-  const marketing = new MarketingService(marketingRepo, audit);
+  const marketing = new MarketingService(
+    marketingRepo,
+    audit,
+    customersRepo,
+    leadsRepo,
+    cartRecoveryRepo,
+    intelligence,
+    communications,
+  );
   const loyaltyRepo = new InMemoryLoyaltyRepository(db);
   const loyalty = new LoyaltyService(
     loyaltyRepo,
@@ -275,6 +287,7 @@ export function createTestContext(): TestContext {
     customersRepo,
     settings,
     audit,
+    bus,
   );
   const reports = new ReportsService(orders, paymentsRepo, cartRecoveryRepo);
   const website = new WebsiteService(settings, audit);
@@ -286,7 +299,13 @@ export function createTestContext(): TestContext {
     catalog,
     cartRecoveryRepo,
   );
-  const staff = new StaffService(adminsRepo, sessionsRepo, audit);
+  const staffInvitations = new InMemoryStaffInvitationsRepository(db);
+  const staff = new StaffService(
+    adminsRepo,
+    sessionsRepo,
+    audit,
+    staffInvitations,
+  );
   const integrations = new IntegrationsService();
   const legalRepo = new InMemoryLegalRepository(db);
   const legal = new LegalService(legalRepo, audit);

@@ -5,10 +5,11 @@ import {
   Optional,
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
-import type {
-  SupportTicket,
-  SupportTicketDetail,
-  SupportTicketMessage,
+import {
+  SUPPORT_TICKET_TRANSITIONS,
+  type SupportTicket,
+  type SupportTicketDetail,
+  type SupportTicketMessage,
 } from '@dostelo/types';
 import type {
   CreateSupportTicket,
@@ -64,6 +65,9 @@ export class SupportService {
       status: 'open',
       assignedToId: null,
       orderNumber: dto.orderNumber ?? null,
+      channel: dto.channel ?? 'admin',
+      firstRespondedAt: null,
+      resolvedAt: null,
       createdAt: now,
       updatedAt: now,
     };
@@ -127,6 +131,11 @@ export class SupportService {
       createdAt: now,
     };
     await this.support.addMessage(message);
+    // The first customer-facing staff reply starts the SLA
+    // first-response clock stop.
+    if (!message.internal && !ticket.firstRespondedAt) {
+      ticket.firstRespondedAt = now;
+    }
     // A customer-facing reply on an open ticket moves it to
     // pending (waiting on the customer); internal notes do not.
     if (!message.internal && ticket.status === 'open') {
@@ -153,7 +162,19 @@ export class SupportService {
     actor?: AuthPrincipal | null,
   ): Promise<SupportTicket> {
     const ticket = await this.requireTicket(id);
+    const allowed = SUPPORT_TICKET_TRANSITIONS[ticket.status];
+    if (ticket.status !== dto.status && !allowed.includes(dto.status)) {
+      throw new BadRequestException(
+        `Ticket ${id} cannot move from ${ticket.status} to ${dto.status}`,
+      );
+    }
     ticket.status = dto.status;
+    if (dto.status === 'resolved' && !ticket.resolvedAt) {
+      ticket.resolvedAt = new Date().toISOString();
+    }
+    if (dto.status === 'open' || dto.status === 'in-progress') {
+      ticket.resolvedAt = null;
+    }
     ticket.updatedAt = new Date().toISOString();
     await this.support.save(ticket);
     if (actor && this.audit) {

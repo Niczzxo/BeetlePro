@@ -1,9 +1,13 @@
 import {
   DEFAULT_DELIVERY_FEES,
   DEFAULT_LOYALTY_RULES,
+  DEFAULT_POINTS_RULES,
+  DEFAULT_SLA_TARGETS,
   DEFAULT_STORE_PROFILE,
   type DeliveryFeeSettings,
   type LoyaltyRules,
+  type PointsRule,
+  type SlaTargets,
 } from '@dostelo/types';
 import type { Tx } from '../prisma/prisma.service';
 
@@ -25,6 +29,18 @@ export interface StoreSettingsData {
   contactPhone: string;
   deliveryFees: DeliveryFeeSettings;
   loyaltyRules: LoyaltyRules;
+  /** Days after delivery during which a return can be opened. */
+  returnWindowDays: number;
+  /** Enable flag for the lead candidate evaluation automation. */
+  automationLeadEvaluationEnabled: boolean;
+  /** Whether Cash on Delivery is accepted at checkout. */
+  allowCod: boolean;
+  /** Whether the store is live for catalogue and checkout. */
+  storeLive: boolean;
+  /** Support SLA targets by priority, in hours. */
+  slaTargets: SlaTargets;
+  /** Loyalty points rules (seeded defaults ship inactive). */
+  loyaltyPointRules: PointsRule[];
 }
 
 /**
@@ -54,6 +70,12 @@ export const DEFAULT_STORE_SETTINGS: StoreSettingsData = {
   contactPhone: DEFAULT_STORE_PROFILE.contactPhone,
   deliveryFees: DEFAULT_DELIVERY_FEES,
   loyaltyRules: DEFAULT_LOYALTY_RULES,
+  returnWindowDays: 30,
+  automationLeadEvaluationEnabled: true,
+  allowCod: true,
+  storeLive: true,
+  slaTargets: structuredClone(DEFAULT_SLA_TARGETS),
+  loyaltyPointRules: DEFAULT_POINTS_RULES.map((rule) => ({ ...rule })),
 };
 
 /**

@@ -3,6 +3,7 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  Optional,
   type OnModuleInit,
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
@@ -20,6 +21,8 @@ import type {
 } from '@dostelo/validation';
 import type { AuthPrincipal } from '../../common/auth/principal';
 import type { Tx } from '../../prisma/prisma.service';
+import { AutomationExecutionsRepository } from '../../store/automation-executions.repository';
+import { SettingsRepository } from '../../store/settings.repository';
 import { AuditService } from '../audit/audit.service';
 import { BuyerIntelligenceService } from '../buyer-intelligence/buyer-intelligence.service';
 import { CustomersService } from '../customers/customers.service';
@@ -71,6 +74,9 @@ export class LeadsService implements OnModuleInit {
     private readonly customers: CustomersService,
     private readonly orders: OrdersRepository,
     private readonly audit: AuditService,
+    @Optional() private readonly settings?: SettingsRepository,
+    @Optional()
+    private readonly executions?: AutomationExecutionsRepository,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -89,8 +95,38 @@ export class LeadsService implements OnModuleInit {
    * created, otherwise null.
    */
   async evaluateCandidate(visitorId: string): Promise<Lead | null> {
+    const startedAt = new Date().toISOString();
     try {
-      return await this.evaluateCandidateInner(visitorId);
+      if (
+        this.settings &&
+        !(await this.settings.get()).automationLeadEvaluationEnabled
+      ) {
+        // Automation paused from the Automation module: no new
+        // candidates are evaluated or created. An already open
+        // lead is returned untouched, exactly as evaluation
+        // would find it.
+        return (await this.leads.findOpenForVisitor(visitorId))[0] ?? null;
+      }
+      const result = await this.evaluateCandidateInner(visitorId);
+      if (this.executions) {
+        try {
+          await this.executions.append({
+            id: randomUUID(),
+            workflowKey: 'lead-candidate-evaluation',
+            entityType: 'visitor',
+            entityId: visitorId,
+            status: 'success',
+            detail: result
+              ? `Open lead candidate at score ${result.score}`
+              : 'No candidate: not identified, or below the threshold',
+            startedAt,
+            completedAt: new Date().toISOString(),
+          });
+        } catch {
+          // Logging is observability, not the flow.
+        }
+      }
+      return result;
     } catch {
       return null;
     }

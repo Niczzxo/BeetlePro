@@ -298,6 +298,7 @@ model ProductVariant {
   cartItems            CartItem[]
   orderItems           OrderItem[]
   stockReservations    StockReservation[]
+  stockMovements       StockMovement[]
   createdAt            DateTime   @default(now())
   updatedAt            DateTime   @updatedAt
 
@@ -360,6 +361,30 @@ model CartItem {
  * ACTIVE reservations, exactly as the in-memory store computes
  * it. orderId stays a plain reference (no relation) so reserve
  * and release never depend on relation write ordering. */
+/** Append-only stock movement ledger (Inventory redesign),
+ * written by the inventory repository on every stock change:
+ * staff adjustments, order reservations, releases on
+ * cancellation and finalizes on delivery. It starts at
+ * deployment; earlier changes were never recorded and are not
+ * backfilled. */
+model StockMovement {
+  id            String   @id @default(uuid())
+  variantId     String
+  variant       ProductVariant @relation(fields: [variantId], references: [id])
+  productId     String
+  type          String
+  deltaOnHand   Int
+  deltaReserved Int
+  onHandAfter   Int
+  reservedAfter Int
+  reference     String?
+  createdAt     DateTime @default(now())
+
+  @@index([variantId])
+  @@index([productId])
+  @@index([createdAt])
+}
+
 model StockReservation {
   id        String           @id @default(uuid())
   orderId   String
@@ -904,6 +929,7 @@ model CommunicationLog {
   leadId            String?
   abandonedCartId   String?
   abandonedCart     AbandonedCart?         @relation(fields: [abandonedCartId], references: [id])
+  campaignId        String?
   templateKey       String?
   subject           String?
   body              String
@@ -917,6 +943,20 @@ model CommunicationLog {
   @@index([status])
   @@index([customerId])
   @@index([abandonedCartId])
+}
+
+/** Staff-edited message templates (Communication Center and Cart
+ * Recovery). A row here overrides the code-versioned built-in
+ * template with the same key; deleting the row restores the
+ * built-in. The rendered text of every send is stored on its
+ * CommunicationLog entry, so later edits never rewrite history. */
+model MessageTemplate {
+  key       String               @id
+  channel   CommunicationChannel
+  subject   String?
+  body      String
+  createdAt DateTime             @default(now())
+  updatedAt DateTime             @updatedAt
 }
 
 /** One row per sequence step: the stored, staff-editable recovery
@@ -1021,14 +1061,25 @@ enum ReturnKind {
 
 enum ReturnStatus {
   REQUESTED
+  UNDER_REVIEW
   APPROVED
   REJECTED
+  AWAITING_PICKUP
+  IN_TRANSIT
+  RECEIVED
+  INSPECTION
+  REFUND_PENDING
+  REFUNDED
+  EXCHANGE_PROCESSING
   COMPLETED
 }
 
 enum SupportTicketStatus {
   OPEN
+  IN_PROGRESS
   PENDING
+  WAITING_CUSTOMER
+  WAITING_STAFF
   RESOLVED
   CLOSED
 }
@@ -1043,6 +1094,8 @@ enum SupportPriority {
 enum ReviewStatus {
   PENDING
   APPROVED
+  FLAGGED
+  REJECTED
   HIDDEN
 }
 
@@ -1055,7 +1108,13 @@ enum CampaignChannel {
 enum CampaignStatus {
   DRAFT
   SCHEDULED
+  QUEUED
+  SENDING
+  COMPLETED
+  PARTIALLY_FAILED
+  FAILED
   CANCELLED
+  ARCHIVED
 }
 
 /** A return or exchange request against a delivered order. The
@@ -1072,6 +1131,17 @@ model ReturnRequest {
   status      ReturnStatus @default(REQUESTED)
   reason      String?
   note        String?
+  /** Returns workflow extension: the requested resolution, the
+   * customer-stated condition, the assigned inspector, the
+   * recorded pickup schedule and receipt, and the inspection
+   * record as JSON. */
+  resolutionType    String    @default("refund")
+  condition         String?
+  assigneeId        String?
+  pickupScheduledAt DateTime?
+  receivedAt        DateTime?
+  inspection        Json?
+  events      ReturnEvent[]
   items       Json
   totalMinor  Int
   currency    String       @default("BDT")
@@ -1088,6 +1158,40 @@ model ReturnRequest {
   @@index([customerId])
 }
 
+/** One recorded step in a return's life (Returns redesign): a
+ * status transition or a staff note action, with the acting
+ * staff member and timestamp. The details timeline is built
+ * from these records only. */
+model ReturnEvent {
+  id        String        @id @default(uuid())
+  returnId  String
+  request   ReturnRequest @relation(fields: [returnId], references: [id])
+  status    ReturnStatus
+  note      String?
+  actorId   String?
+  createdAt DateTime      @default(now())
+
+  @@index([returnId])
+}
+
+/** One recorded automation execution (Automation redesign),
+ * written by the flow itself as it runs: workflow key, the
+ * entity it acted on, the outcome and the timing. Starts at
+ * deployment; never backfilled. */
+model AutomationExecution {
+  id          String   @id @default(uuid())
+  workflowKey String
+  entityType  String
+  entityId    String
+  status      String
+  detail      String
+  startedAt   DateTime
+  completedAt DateTime
+
+  @@index([workflowKey])
+  @@index([startedAt])
+}
+
 model SupportTicket {
   id            String              @id @default(uuid())
   customerId    String?
@@ -1100,6 +1204,9 @@ model SupportTicket {
   status        SupportTicketStatus @default(OPEN)
   assignedToId  String?
   orderNumber   String?
+  channel       String              @default("admin")
+  firstRespondedAt DateTime?
+  resolvedAt    DateTime?
   messages      SupportTicketMessage[]
   createdAt     DateTime            @default(now())
   updatedAt     DateTime            @updatedAt
@@ -1133,6 +1240,11 @@ model ProductReview {
   body       String
   status     ReviewStatus @default(PENDING)
   source     String       @default("staff-entered")
+  verified   Boolean      @default(false)
+  verificationNote String?
+  orderNumber String?
+  flagReason String?
+  replies    Json         @default("[]")
   createdAt  DateTime     @default(now())
   updatedAt  DateTime     @updatedAt
 
@@ -1145,8 +1257,18 @@ model Campaign {
   name         String
   channel      CampaignChannel
   audienceNote String
+  /** Marketing send extension: the resolved audience segment
+   * and optional rules, the shared-store template or the
+   * campaign's own subject and body, and the send outcome. */
+  segmentKey   String         @default("all-customers")
+  segmentRules Json?
+  templateKey  String?
+  subject      String?
+  body         String?
   status       CampaignStatus @default(DRAFT)
   scheduledFor DateTime?
+  sentAt       DateTime?
+  sendNote     String?
   createdById  String?
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt
@@ -1163,20 +1285,44 @@ model LoyaltyTransaction {
   delta       Int
   reason      String
   orderId     String?
+  type        String   @default("adjusted")
+  referenceKey String?
   createdById String?
   createdAt   DateTime @default(now())
 
   @@index([customerId])
+  @@index([referenceKey])
 }
 
 /** An editable legal document, keyed by its slug (privacy,
  * terms, returns, refund, shipping, warranty). */
 model LegalDocument {
-  slug        String   @id
-  title       String
-  body        String
-  updatedById String?
-  updatedAt   DateTime @updatedAt
+  slug           String    @id
+  title          String
+  body           String
+  description    String    @default("")
+  isCustom       Boolean   @default(false)
+  publishedTitle String?
+  publishedBody  String?
+  publishedAt    DateTime?
+  publishedById  String?
+  unpublishedAt  DateTime?
+  updatedById    String?
+  updatedAt      DateTime  @updatedAt
+}
+
+/** One immutable publish snapshot of a legal document. */
+model LegalDocumentVersion {
+  id            String   @id @default(uuid())
+  slug          String
+  version       Int
+  title         String
+  body          String
+  publishedById String?
+  publishedAt   DateTime @default(now())
+
+  @@unique([slug, version])
+  @@index([slug])
 }
 
 /** A staff notification read mark. The feed itself is derived
@@ -1187,8 +1333,26 @@ model NotificationRead {
   adminUserId     String
   notificationKey String
   readAt          DateTime @default(now())
+  hidden          Boolean  @default(false)
 
   @@unique([adminUserId, notificationKey])
+}
+
+model StaffInvitation {
+  id          String    @id @default(uuid())
+  adminUserId String
+  tokenHash   String    @unique
+  expiresAt   DateTime
+  usedAt      DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([adminUserId])
+}
+
+model NotificationPreference {
+  adminUserId  String  @id
+  categories   Json
+  emailEnabled Boolean @default(false)
 }
 
 /** A staff-triggered data export record: counts per store only.
@@ -1198,5 +1362,20 @@ model DataExport {
   id            String   @id @default(uuid())
   requestedById String?
   counts        Json
+  collections   Json     @default("[]")
+  byteSize      Int      @default(0)
   createdAt     DateTime @default(now())
+}
+
+/** A stored backup snapshot (Backup redesign). The snapshot is
+ * the full export JSON document, kept in the application
+ * database; the checksum guards every download. */
+model StoredBackup {
+  id          String   @id @default(uuid())
+  createdById String?
+  byteSize    Int
+  checksum    String
+  collections Json
+  snapshot    Json
+  createdAt   DateTime @default(now())
 }

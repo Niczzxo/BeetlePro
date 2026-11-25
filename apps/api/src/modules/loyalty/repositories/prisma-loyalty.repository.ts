@@ -12,6 +12,8 @@ function toDomain(row: TxRow): LoyaltyTransaction {
     delta: row.delta,
     reason: row.reason,
     orderId: row.orderId,
+    type: (row.type ?? 'adjusted') as LoyaltyTransaction['type'],
+    referenceKey: row.referenceKey,
     createdById: row.createdById,
     createdAt: iso(row.createdAt),
   };
@@ -39,6 +41,8 @@ export class PrismaLoyaltyRepository extends LoyaltyRepository {
         delta: transaction.delta,
         reason: transaction.reason,
         orderId: transaction.orderId,
+        type: transaction.type,
+        referenceKey: transaction.referenceKey,
         createdById: transaction.createdById,
       },
     });

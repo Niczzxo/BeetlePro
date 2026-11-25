@@ -4,6 +4,7 @@ import { slugify } from '../../../common/parse-body';
 import { InMemoryDatabase } from '../../../store/in-memory.store';
 import {
   CatalogRepository,
+  type ProductReferenceCounts,
   type ProductWithVariant,
 } from './catalog.repository';
 
@@ -66,5 +67,76 @@ export class InMemoryCatalogRepository extends CatalogRepository {
           category.name.toLowerCase() === key.toLowerCase(),
       ) ?? null
     );
+  }
+
+  async createProduct(product: Product): Promise<Product> {
+    this.db.products.set(product.id, product);
+    for (const variant of product.variants) {
+      this.db.stock.set(variant.id, {
+        productId: product.id,
+        onHand: variant.stock,
+        reserved: 0,
+      });
+    }
+    return this.withLiveStock(product);
+  }
+
+  async updateProduct(product: Product): Promise<Product> {
+    this.db.products.set(product.id, product);
+    for (const variant of product.variants) {
+      const record = this.db.stock.get(variant.id);
+      if (record) {
+        record.onHand = variant.stock;
+        record.productId = product.id;
+      } else {
+        this.db.stock.set(variant.id, {
+          productId: product.id,
+          onHand: variant.stock,
+          reserved: 0,
+        });
+      }
+    }
+    return this.withLiveStock(product);
+  }
+
+  async deleteProduct(id: string): Promise<boolean> {
+    const product = this.db.products.get(id);
+    if (!product) return false;
+    for (const variant of product.variants) {
+      this.db.stock.delete(variant.id);
+    }
+    return this.db.products.delete(id);
+  }
+
+  async countProductReferences(
+    id: string,
+  ): Promise<ProductReferenceCounts> {
+    const product = this.db.products.get(id);
+    const variantIds = new Set(
+      (product?.variants ?? []).map((variant) => variant.id),
+    );
+    let orderItems = 0;
+    for (const order of this.db.orders.values()) {
+      orderItems += order.items.filter(
+        (item) => item.productId === id,
+      ).length;
+    }
+    let cartItems = 0;
+    for (const cart of this.db.carts.values()) {
+      cartItems += cart.items.filter(
+        (item) => item.productId === id,
+      ).length;
+    }
+    let reservations = 0;
+    for (const lines of this.db.reservations.values()) {
+      reservations += lines.filter((line) =>
+        variantIds.has(line.variantId),
+      ).length;
+    }
+    let reviews = 0;
+    for (const review of this.db.productReviews.values()) {
+      if (review.productId === id) reviews += 1;
+    }
+    return { orderItems, cartItems, reservations, reviews };
   }
 }

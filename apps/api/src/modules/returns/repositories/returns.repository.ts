@@ -1,4 +1,8 @@
-import type { ReturnRequest, ReturnStatus } from '@dostelo/types';
+import type {
+  ReturnEvent,
+  ReturnRequest,
+  ReturnStatus,
+} from '@dostelo/types';
 import type { Tx } from '../../../prisma/prisma.service';
 
 export interface ReturnFilter {
@@ -25,4 +29,12 @@ export abstract class ReturnsRepository {
     filter?: ReturnFilter,
     tx?: Tx,
   ): Promise<ReturnRequest[]>;
+  /** Appends one workflow event (a transition or a staff note
+   * action). Events are append-only; the timeline reads them
+   * back in write order. */
+  abstract appendEvent(event: ReturnEvent, tx?: Tx): Promise<void>;
+  abstract listEvents(
+    returnId: string,
+    tx?: Tx,
+  ): Promise<ReturnEvent[]>;
 }

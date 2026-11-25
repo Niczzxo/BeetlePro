@@ -38,6 +38,9 @@ export class InMemoryCommunicationsRepository extends CommunicationsRepository {
         ) {
           return false;
         }
+        if (filter.campaignId && entry.campaignId !== filter.campaignId) {
+          return false;
+        }
         return true;
       })
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt));

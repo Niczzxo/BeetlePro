@@ -1,5 +1,9 @@
 import type { Tx } from '../../../prisma/prisma.service';
-import type { StockRecord } from '../../../store/in-memory.store';
+import type {
+  StockMovement,
+  StockMovementFilter,
+  StockRecord,
+} from '../../../store/in-memory.store';
 
 export interface StockView extends StockRecord {
   variantId: string;
@@ -10,6 +14,13 @@ export interface StockLine {
   variantId: string;
   quantity: number;
 }
+
+/** The movement ledger record lives with the store types; it
+ * is re-exported here so inventory consumers import one module. */
+export type {
+  StockMovement,
+  StockMovementFilter,
+} from '../../../store/in-memory.store';
 
 /**
  * Inventory persistence seam: stock levels plus order reservations.
@@ -43,4 +54,9 @@ export abstract class InventoryRepository {
   /** Settles an order's reservation as sold (delivered): on-hand and
    * reserved both drop by the reserved quantity. */
   abstract finalize(orderId: string, tx?: Tx): Promise<void>;
+  /** Reads the movement ledger, newest first. */
+  abstract listMovements(
+    filter: StockMovementFilter,
+    tx?: Tx,
+  ): Promise<StockMovement[]>;
 }

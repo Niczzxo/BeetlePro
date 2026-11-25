@@ -48,6 +48,22 @@ export class WebsiteService {
       ...(dto.freeDeliveryOffer !== undefined
         ? { freeDeliveryOffer: dto.freeDeliveryOffer }
         : {}),
+      ...(dto.returnWindowDays !== undefined
+        ? { returnWindowDays: dto.returnWindowDays }
+        : {}),
+      ...(dto.automationLeadEvaluationEnabled !== undefined
+        ? {
+            automationLeadEvaluationEnabled:
+              dto.automationLeadEvaluationEnabled,
+          }
+        : {}),
+      ...(dto.allowCod !== undefined ? { allowCod: dto.allowCod } : {}),
+      ...(dto.storeLive !== undefined
+        ? { storeLive: dto.storeLive }
+        : {}),
+      ...(dto.slaTargets !== undefined
+        ? { slaTargets: dto.slaTargets }
+        : {}),
       ...(dto.deliveryFees !== undefined
         ? { deliveryFees: dto.deliveryFees }
         : {}),
@@ -80,6 +96,12 @@ export class WebsiteService {
       deliveryFees: settings.deliveryFees,
       manualInstructions: settings.manualInstructions,
       loyaltyRules: settings.loyaltyRules,
+      returnWindowDays: settings.returnWindowDays,
+      automationLeadEvaluationEnabled:
+        settings.automationLeadEvaluationEnabled,
+      allowCod: settings.allowCod,
+      storeLive: settings.storeLive,
+      slaTargets: settings.slaTargets,
     };
   }
 }

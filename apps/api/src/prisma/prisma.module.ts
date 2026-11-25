@@ -2,6 +2,8 @@ import { Global, Module } from '@nestjs/common';
 import { OrderEventBus } from '../store/order-event-bus';
 import { PrismaService } from './prisma.service';
 import { PrismaSeedService } from '../seed/prisma-seed.service';
+import { AutomationExecutionsRepository } from '../store/automation-executions.repository';
+import { PrismaAutomationExecutionsRepository } from '../store/prisma-automation-executions.repository';
 import { PrismaSettingsRepository } from '../store/prisma-settings.repository';
 import { SettingsRepository } from '../store/settings.repository';
 import {
@@ -28,12 +30,17 @@ import {
     OrderEventBus,
     { provide: TransactionRunner, useClass: PrismaTransactionRunner },
     { provide: SettingsRepository, useClass: PrismaSettingsRepository },
+    {
+      provide: AutomationExecutionsRepository,
+      useClass: PrismaAutomationExecutionsRepository,
+    },
   ],
   exports: [
     PrismaService,
     OrderEventBus,
     TransactionRunner,
     SettingsRepository,
+    AutomationExecutionsRepository,
   ],
 })
 export class PrismaModule {}

@@ -96,7 +96,7 @@ describe('ReturnsService', () => {
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
-  it('approves a full return: restocks, returns the order, hands off and completes', async () => {
+  it('runs the full return flow: approve, receive, inspect, refund, complete', async () => {
     const ctx = createTestContext();
     const order = await placeDeliveredOrder(ctx, 'full@example.com');
     const item = order.items[0]!;
@@ -107,7 +107,7 @@ describe('ReturnsService', () => {
       {
         orderNumber: order.orderNumber,
         kind: 'return',
-        reason: 'Wrong size',
+        reason: 'wrong-size',
         items: [{ orderItemId: item.id, quantity: 2 }],
       },
       actor,
@@ -116,30 +116,55 @@ describe('ReturnsService', () => {
     expect(request.total.amountMinor).toBe(item.unitPrice.amountMinor * 2);
     expect(request.refundState).toBe('none');
 
+    // Approval alone never restocks and never moves the order.
     const approved = await ctx.returns.approve(request.id, actor);
     expect(approved.status).toBe('approved');
-    expect(approved.restocked).toBe(true);
-    const stockAfter = await ctx.inventoryService.getStock(variant.id);
-    expect(stockAfter.onHand).toBe(stockBefore.onHand + 2);
-    const afterOrder = await ctx.ordersService.getByNumber(order.orderNumber);
-    expect(afterOrder.status).toBe('returned');
+    expect(approved.restocked).toBe(false);
+    expect(
+      (await ctx.inventoryService.getStock(variant.id)).onHand,
+    ).toBe(stockBefore.onHand);
+    expect(
+      (await ctx.ordersService.getByNumber(order.orderNumber)).status,
+    ).toBe('delivered');
+
+    await ctx.returns.recordReceived(request.id, actor);
+    const inspected = await ctx.returns.completeInspection(
+      request.id,
+      {
+        condition: 'Good, tags attached',
+        quantityReceived: 2,
+        outcome: 'resellable',
+      },
+      actor,
+    );
+    // A resellable inspection is the only restock path.
+    expect(inspected.restocked).toBe(true);
+    expect(inspected.status).toBe('refund-pending');
+    expect(
+      (await ctx.inventoryService.getStock(variant.id)).onHand,
+    ).toBe(stockBefore.onHand + 2);
 
     const handOff = await ctx.returns.handOffRefund(request.id, actor);
-    // The full return moved the order to returned, and the
-    // payments module settles a collected COD payment itself at
-    // that moment, so the hand-off completes with the payment
-    // already refunded and no new refund row.
     expect(handOff.request.refundState).toBe('handed-off');
-    expect(handOff.refundId).toBeNull();
+    expect(handOff.refundId).toBeTruthy();
     const payments = await ctx.paymentsRepo.listByOrder(order.id);
-    expect(payments[0]!.status).toBe('refunded');
-    const refunds = await ctx.paymentsRepo.listRefundsByPayment(
+    await ctx.payments.confirmRefund(
       payments[0]!.id,
+      handOff.refundId as string,
+      {},
+      actor,
     );
-    expect(refunds).toHaveLength(0);
+    const refunded = await ctx.returns.markRefunded(request.id, actor);
+    expect(refunded.status).toBe('refunded');
 
     const completed = await ctx.returns.complete(request.id, actor);
     expect(completed.status).toBe('completed');
+    // Completing a full return is what returns the order.
+    expect(
+      (await ctx.ordersService.getByNumber(order.orderNumber)).status,
+    ).toBe('returned');
+    const detail = await ctx.returns.getDetail(request.id);
+    expect(detail.events.length).toBeGreaterThan(3);
   });
 
   it('keeps the order delivered for a partial return and blocks over-returning', async () => {
@@ -221,6 +246,17 @@ describe('ReturnsService', () => {
     );
     expect(request.refundState).toBe('not-required');
     await ctx.returns.approve(request.id, actor);
+    await ctx.returns.recordReceived(request.id, actor);
+    const inspected = await ctx.returns.completeInspection(
+      request.id,
+      {
+        condition: 'Good',
+        quantityReceived: 1,
+        outcome: 'resellable',
+      },
+      actor,
+    );
+    expect(inspected.status).toBe('exchange-processing');
     const completed = await ctx.returns.complete(request.id, actor);
     expect(completed.status).toBe('completed');
   });

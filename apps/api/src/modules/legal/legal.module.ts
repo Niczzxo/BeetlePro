@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { AuditModule } from '../audit/audit.module';
 import { LegalController } from './legal.controller';
+import { LegalPublicController } from './legal-public.controller';
 import { LegalService } from './legal.service';
 import { LegalRepository } from './repositories/legal.repository';
 import { InMemoryLegalRepository } from './repositories/in-memory-legal.repository';
@@ -12,7 +13,7 @@ import { PrismaLegalRepository } from './repositories/prisma-legal.repository';
  */
 @Module({
   imports: [AuditModule],
-  controllers: [LegalController],
+  controllers: [LegalController, LegalPublicController],
   providers: [
     LegalService,
     {

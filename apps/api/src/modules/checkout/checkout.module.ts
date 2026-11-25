@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { AuditModule } from '../audit/audit.module';
 import { CatalogModule } from '../catalog/catalog.module';
 import { CartsModule } from '../carts/carts.module';
 import { CustomersModule } from '../customers/customers.module';
@@ -9,10 +10,12 @@ import { VisitorsModule } from '../visitors/visitors.module';
 import { LeadsModule } from '../leads/leads.module';
 import { CartRecoveryModule } from '../cart-recovery/cart-recovery.module';
 import { CheckoutController } from './checkout.controller';
+import { StaffOrdersController } from './staff-orders.controller';
 import { CheckoutService } from './checkout.service';
 
 @Module({
   imports: [
+    AuditModule,
     CatalogModule,
     CartsModule,
     CustomersModule,
@@ -23,7 +26,7 @@ import { CheckoutService } from './checkout.service';
     LeadsModule,
     CartRecoveryModule,
   ],
-  controllers: [CheckoutController],
+  controllers: [CheckoutController, StaffOrdersController],
   providers: [CheckoutService],
 })
 export class CheckoutModule {}

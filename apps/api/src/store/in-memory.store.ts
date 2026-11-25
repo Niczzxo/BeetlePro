@@ -8,6 +8,7 @@ import type {
   Cart,
   Category,
   CommunicationLog,
+  MessageTemplate,
   ConsentRecord,
   Courier,
   Customer,
@@ -28,6 +29,8 @@ import type {
   RecoveryAttempt,
   RecoverySettings,
   Refund,
+  AutomationExecution,
+  ReturnEvent,
   ReturnRequest,
   Shipment,
   ShipmentStatusEvent,
@@ -37,6 +40,10 @@ import type {
   VisitorSession,
   WebhookEvent,
 } from '@dostelo/types';
+import {
+  DEFAULT_POINTS_RULES,
+  DEFAULT_SLA_TARGETS,
+} from '@dostelo/types';
 
 /** A notification read mark (Notifications build), mirroring the
  * NotificationRead model: staff notification keys a staff member
@@ -45,6 +52,8 @@ export interface NotificationReadRecord {
   adminUserId: string;
   notificationKey: string;
   readAt: string;
+  /** Hidden for this staff member only (their delete action). */
+  hidden?: boolean;
 }
 
 /** A customer record as stored, including the password hash. The
@@ -59,6 +68,28 @@ export interface StoredCustomer extends Customer {
  * in-memory store: roles are the AdminRole keys from
  * @dostelo/types, and the TOTP secret stays server-side only.
  */
+/** A staff invitation (Staff redesign): the raw token is shown
+ * once to the inviting admin and never stored; only its SHA-256
+ * hash is kept, with an expiry and a single-use mark. */
+export interface StoredBackupRecord {
+  id: string;
+  createdById: string | null;
+  byteSize: number;
+  checksum: string;
+  collections: string[];
+  snapshot: string;
+  createdAt: string;
+}
+
+export interface StoredStaffInvitation {
+  id: string;
+  adminUserId: string;
+  tokenHash: string;
+  expiresAt: string;
+  usedAt: string | null;
+  createdAt: string;
+}
+
 export interface StoredAdminUser {
   id: string;
   email: string;
@@ -123,6 +154,37 @@ export interface StockRecord {
   reserved: number;
 }
 
+/** One append-only stock movement, written by the inventory
+ * repository at the moment a stock change actually happens: a
+ * staff adjustment, an order reservation, a release on
+ * cancellation, or a finalize on delivery. Balances are the
+ * record's values right after the change. The ledger starts
+ * when this ships: earlier changes were never recorded anywhere
+ * and are not backfilled. */
+export interface StockMovement {
+  id: string;
+  variantId: string;
+  productId: string;
+  type: 'adjustment' | 'reserve' | 'release' | 'finalize';
+  deltaOnHand: number;
+  deltaReserved: number;
+  onHandAfter: number;
+  reservedAfter: number;
+  /** Order id for reserve, release and finalize movements;
+   * null for staff adjustments (the acting staff member and the
+   * reason are on the audit entry written alongside). */
+  reference: string | null;
+  createdAt: string;
+}
+
+export interface StockMovementFilter {
+  variantId?: string;
+  productId?: string;
+  from?: string;
+  to?: string;
+  limit?: number;
+}
+
 export interface ReservationLine {
   variantId: string;
   quantity: number;
@@ -172,6 +234,8 @@ export class InMemoryDatabase {
   readonly adminUsers = new Map<string, StoredAdminUser>();
   /** Refresh-token sessions (Phase 4), keyed by session id. */
   readonly sessions = new Map<string, StoredSession>();
+  /** Staff invitations by id (Staff redesign). */
+  readonly staffInvitations = new Map<string, StoredStaffInvitation>();
   /** Audit trail (Phase 4), append-only, in write order. */
   readonly auditLogs: AuditLogEntry[] = [];
   readonly carts = new Map<string, Cart>();
@@ -188,6 +252,11 @@ export class InMemoryDatabase {
   /** Stock per variant id. Single source of truth for stock levels;
    * catalog reads overlay variant stock from here. */
   readonly stock = new Map<string, StockRecord>();
+  /** Append-only stock movement ledger (Inventory redesign),
+   * written by the inventory repository on every stock change.
+   * Starts empty: movements before this existed were never
+   * recorded and are not backfilled. */
+  readonly stockMovements: StockMovement[] = [];
   /** Reserved lines per order id, released or finalized with the
    * order's status flow. */
   readonly reservations = new Map<string, ReservationLine[]>();
@@ -219,6 +288,13 @@ export class InMemoryDatabase {
   /** Communication log (Phase 6), append-only, in write order.
    * Every send, refusal and staff-logged call lands here. */
   readonly communicationLogs: CommunicationLog[] = [];
+  /** Staff-edited message templates, keyed by template key. A
+   * stored template overrides the code-versioned built-in with
+   * the same key; deleting it restores the built-in. */
+  readonly messageTemplates = new Map<
+    string,
+    MessageTemplate & { updatedAt: string }
+  >();
   /** Stored recovery settings (Phase 6). Null until the recovery
    * repository seeds them from the environment defaults on first
    * read; staff edits replace the record. */
@@ -258,9 +334,22 @@ export class InMemoryDatabase {
       codFeeMinor: 1000,
     },
     loyaltyRules: { takaPerPoint: 100, pointValueMinor: 100 },
+    returnWindowDays: 30,
+    automationLeadEvaluationEnabled: true,
+    allowCod: true,
+    storeLive: true,
+    slaTargets: structuredClone(DEFAULT_SLA_TARGETS),
+    loyaltyPointRules: DEFAULT_POINTS_RULES.map((rule) => ({ ...rule })),
   };
   /** Return and exchange requests (Returns build), keyed by id. */
   readonly returnRequests = new Map<string, ReturnRequest>();
+  /** Return workflow events (Returns redesign), append-only, in
+   * write order: one per recorded transition or staff action. */
+  readonly returnEvents: ReturnEvent[] = [];
+  /** Automation execution log (Automation redesign), append-only,
+   * in write order. Written by the flows themselves as they run;
+   * starts empty and is never backfilled. */
+  readonly automationExecutions: AutomationExecution[] = [];
   /** Support tickets (Support build), keyed by ticket id. */
   readonly supportTickets = new Map<string, SupportTicket>();
   /** Support ticket messages, append-only, in write order. */
@@ -277,11 +366,20 @@ export class InMemoryDatabase {
    * documents staff have saved exist here; the service serves
    * the label defaults for the rest. */
   readonly legalDocuments = new Map<string, LegalDocument>();
+  readonly legalVersions: import('@dostelo/types').LegalDocumentVersion[] =
+    [];
   /** Notification read marks (Notifications build), append-only:
    * one entry per (admin user, notification key) marked read. */
   readonly notificationReads: NotificationReadRecord[] = [];
+  /** Per-admin notification preferences (Notifications
+   * redesign), keyed by admin user id. */
+  readonly notificationPreferences = new Map<
+    string,
+    import('@dostelo/types').NotificationPreference
+  >();
   /** Data export records (Backup build), keyed by export id. The
    * record keeps counts only; the export document itself is
    * returned to the requester and never stored. */
   readonly dataExports = new Map<string, DataExportRecord>();
+  readonly storedBackups = new Map<string, StoredBackupRecord>();
 }

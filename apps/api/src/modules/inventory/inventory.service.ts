@@ -4,6 +4,8 @@ import type { AuthPrincipal } from '../../common/auth/principal';
 import { AuditService } from '../audit/audit.service';
 import {
   InventoryRepository,
+  type StockMovement,
+  type StockMovementFilter,
   type StockView,
 } from './repositories/inventory.repository';
 
@@ -72,5 +74,14 @@ export class InventoryService {
   async availableFor(variantId: string): Promise<number> {
     const record = await this.inventory.getStock(variantId);
     return record ? record.onHand - record.reserved : 0;
+  }
+
+  /** The append-only movement ledger, newest first. It starts
+   * at the deployment that introduced it; nothing older exists
+   * and the portal says so instead of implying full history. */
+  async listMovements(
+    filter: StockMovementFilter,
+  ): Promise<StockMovement[]> {
+    return this.inventory.listMovements(filter);
   }
 }

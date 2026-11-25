@@ -23,6 +23,11 @@ function toDomain(row: ReviewRow): ProductReview {
     body: row.body,
     status: fromEnum(row.status),
     source: row.source as ProductReview['source'],
+    verified: row.verified,
+    verificationNote: row.verificationNote,
+    orderNumber: row.orderNumber,
+    flagReason: row.flagReason,
+    replies: (row.replies as unknown as ProductReview['replies']) ?? [],
     createdAt: iso(row.createdAt),
     updatedAt: iso(row.updatedAt),
   };
@@ -54,6 +59,11 @@ export class PrismaReviewsRepository extends ReviewsRepository {
         body: review.body,
         status: toEnum<ReviewRow['status']>(review.status),
         source: review.source,
+        verified: review.verified,
+        verificationNote: review.verificationNote,
+        orderNumber: review.orderNumber,
+        flagReason: review.flagReason,
+        replies: review.replies as unknown as import('@prisma/client').Prisma.InputJsonValue,
       },
     });
     return toDomain(row);
@@ -70,6 +80,11 @@ export class PrismaReviewsRepository extends ReviewsRepository {
         body: review.body,
         status: toEnum<ReviewRow['status']>(review.status),
         source: review.source,
+        verified: review.verified,
+        verificationNote: review.verificationNote,
+        orderNumber: review.orderNumber,
+        flagReason: review.flagReason,
+        replies: review.replies as unknown as import('@prisma/client').Prisma.InputJsonValue,
       },
     });
   }

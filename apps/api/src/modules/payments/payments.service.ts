@@ -22,6 +22,7 @@ import type {
   RefundRequest,
 } from '@dostelo/validation';
 import { OrdersRepository } from '../orders/repositories/orders.repository';
+import { AutomationExecutionsRepository } from '../../store/automation-executions.repository';
 import { AuditService } from '../audit/audit.service';
 import type { AuthPrincipal } from '../../common/auth/principal';
 import {
@@ -93,6 +94,8 @@ export class PaymentsService {
     @Optional() private readonly audit?: AuditService,
     @Optional()
     private readonly transactions: TransactionRunner = new NoopTransactionRunner(),
+    @Optional()
+    private readonly executions?: AutomationExecutionsRepository,
   ) {
     bus?.subscribe((event) => this.handleOrderStatusChanged(event));
   }
@@ -655,11 +658,28 @@ export class PaymentsService {
       status: PaymentStatus,
       eventType: string,
     ): Promise<void> => {
+      const startedAt = new Date().toISOString();
       await this.transactions.run((tx) =>
         this.setStatus(codPayment, status, eventType, {
           orderNumber: order.orderNumber,
         }, tx),
       );
+      if (this.executions) {
+        try {
+          await this.executions.append({
+            id: randomUUID(),
+            workflowKey: 'payment-order-sync',
+            entityType: 'order',
+            entityId: order.id,
+            status: 'success',
+            detail: `COD payment for order ${order.orderNumber} synced to ${status} on ${to}`,
+            startedAt,
+            completedAt: new Date().toISOString(),
+          });
+        } catch {
+          // Logging is observability, not the flow.
+        }
+      }
     };
     if (to === 'delivered') {
       if (

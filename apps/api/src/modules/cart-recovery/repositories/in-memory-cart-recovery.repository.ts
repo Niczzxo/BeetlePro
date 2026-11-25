@@ -80,6 +80,8 @@ export class InMemoryCartRecoveryRepository extends CartRecoveryRepository {
     if (!this.db.recoverySettings) {
       const config = recoveryConfig();
       this.db.recoverySettings = {
+        enabled: true,
+        sequenceEnabled: true,
         abandonedAfterMinutes: config.abandonedAfterMinutes,
         tokenTtlDays: config.tokenTtlDays,
         steps: DEFAULT_RECOVERY_SETTINGS.steps.map((step) => ({

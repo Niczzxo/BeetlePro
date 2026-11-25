@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Injectable,
   NotFoundException,
+  Optional,
   type OnModuleInit,
 } from '@nestjs/common';
 import { randomBytes, randomUUID } from 'node:crypto';
@@ -21,13 +22,13 @@ import type { RecoverySettingsUpdate } from '@dostelo/validation';
 import type { AuthPrincipal } from '../../common/auth/principal';
 import { recoveryConfig } from '../../config/recovery.config';
 import type { Tx } from '../../prisma/prisma.service';
+import { AutomationExecutionsRepository } from '../../store/automation-executions.repository';
 import type { StoredCustomer } from '../../store/in-memory.store';
 import { AuditService } from '../audit/audit.service';
 import { CatalogRepository } from '../catalog/repositories/catalog.repository';
 import { CartsService } from '../carts/carts.service';
 import { CartsRepository } from '../carts/repositories/carts.repository';
 import { CommunicationsService } from '../communications/communications.service';
-import { findTemplate } from '../communications/templates/message-templates';
 import { CustomersService } from '../customers/customers.service';
 import { JobQueue } from '../jobs/job-queue';
 import { VisitorsService } from '../visitors/visitors.service';
@@ -111,7 +112,35 @@ export class CartRecoveryService implements OnModuleInit {
     private readonly communications: CommunicationsService,
     private readonly queue: JobQueue,
     private readonly audit: AuditService,
+    @Optional()
+    private readonly executions?: AutomationExecutionsRepository,
   ) {}
+
+  /** Appends one automation execution record. Best-effort: a
+   * logging failure never breaks the flow itself. */
+  private async logExecution(
+    workflowKey: string,
+    entityId: string,
+    status: 'success' | 'failed',
+    detail: string,
+    startedAt: string,
+  ): Promise<void> {
+    if (!this.executions) return;
+    try {
+      await this.executions.append({
+        id: randomUUID(),
+        workflowKey,
+        entityType: 'abandoned-cart',
+        entityId,
+        status,
+        detail,
+        startedAt,
+        completedAt: new Date().toISOString(),
+      });
+    } catch {
+      // The execution log is observability, not the flow.
+    }
+  }
 
   async onModuleInit(): Promise<void> {
     this.registerJobs();
@@ -184,6 +213,7 @@ export class CartRecoveryService implements OnModuleInit {
         continue;
       }
       if (existing) continue;
+      if (!settings.enabled) continue;
       if (cart.status === 'converted') continue;
       if (cart.items.length === 0) continue;
       const inactiveMs = nowMs - Date.parse(cart.updatedAt);
@@ -221,6 +251,13 @@ export class CartRecoveryService implements OnModuleInit {
       };
       await this.recovery.create(recovery);
       detected += 1;
+      await this.logExecution(
+        'cart-recovery-detection',
+        recovery.id,
+        'success',
+        `Detected an abandoned cart with ${recovery.itemCount} item(s)`,
+        now,
+      );
       await this.audit.record({
         actorType: 'system',
         actorId: null,
@@ -266,6 +303,13 @@ export class CartRecoveryService implements OnModuleInit {
         item.stepNumber === stepNumber && item.status === 'scheduled',
     );
     if (!attempt) return;
+    // Automation paused: the attempt stays scheduled and runs
+    // when the automation is switched back on. Nothing is sent
+    // and nothing is marked as attempted while disabled. The
+    // sequence switch pauses step execution the same way while
+    // detection keeps opening recoveries.
+    const settingsNow = await this.recovery.getSettings();
+    if (!settingsNow.enabled || !settingsNow.sequenceEnabled) return;
     attempt.queueJobId = null;
 
     const cart = await this.carts.findById(recovery.cartId);
@@ -315,6 +359,14 @@ export class CartRecoveryService implements OnModuleInit {
           ),
           total: formatMoney(view.subtotal),
           recoveryLink: `${recoveryConfig().storefrontUrl}/recover/${recovery.recoveryToken}`,
+          // Snake_case aliases with the same values, so
+          // templates written with {{customer_name}},
+          // {{product_name}}, {{cart_total}} or
+          // {{recovery_link}} render identically.
+          customer_name: recovery.contactName ?? '',
+          product_name: view.items[0]?.productName ?? '',
+          cart_total: formatMoney(view.subtotal),
+          recovery_link: `${recoveryConfig().storefrontUrl}/recover/${recovery.recoveryToken}`,
         },
         purpose: 'cart-recovery',
       });
@@ -335,6 +387,15 @@ export class CartRecoveryService implements OnModuleInit {
       entityId: recovery.id,
       metadata: { stepNumber, channel, outcome },
     });
+    await this.logExecution(
+      'cart-recovery-sequence',
+      recovery.id,
+      outcome === 'sent' || outcome === 'awaiting-staff'
+        ? 'success'
+        : 'failed',
+      `Step ${stepNumber} over ${channel}: ${outcome}`,
+      attempt.executedAt ?? new Date().toISOString(),
+    );
 
     if (recovery.status === 'recovered' || recovery.status === 'closed') {
       return;
@@ -474,6 +535,15 @@ export class CartRecoveryService implements OnModuleInit {
     recovery.updatedAt = new Date().toISOString();
     await this.recovery.save(recovery, tx);
     await this.cancelPendingAttempts(recovery.id, tx);
+    await this.logExecution(
+      'order-recovery-marking',
+      recovery.id,
+      'success',
+      orderNumber
+        ? `Recovery completed by order ${orderNumber}; pending steps cancelled`
+        : 'Recovery completed by a purchase; pending steps cancelled',
+      recovery.updatedAt,
+    );
     await this.audit.record({
       actorType: 'system',
       actorId: null,
@@ -629,6 +699,8 @@ export class CartRecoveryService implements OnModuleInit {
   ): Promise<RecoverySettings> {
     const current = await this.recovery.getSettings();
     const next: RecoverySettings = {
+      enabled: dto.enabled ?? current.enabled,
+      sequenceEnabled: dto.sequenceEnabled ?? current.sequenceEnabled,
       abandonedAfterMinutes:
         dto.abandonedAfterMinutes ?? current.abandonedAfterMinutes,
       tokenTtlDays: dto.tokenTtlDays ?? current.tokenTtlDays,
@@ -647,7 +719,13 @@ export class CartRecoveryService implements OnModuleInit {
         );
       }
       for (const step of dto.steps) {
-        const template = findTemplate(step.templateKey);
+        // Resolved through the communications service so a
+        // staff-edited or staff-created template is a valid
+        // sequence template, not only the code-versioned
+        // built-ins.
+        const template = await this.communications.resolveTemplate(
+          step.templateKey,
+        );
         if (!template) {
           throw new BadRequestException(
             `Unknown message template: ${step.templateKey}`,
@@ -669,6 +747,8 @@ export class CartRecoveryService implements OnModuleInit {
       entityType: 'settings',
       entityId: 'cart-recovery',
       metadata: {
+        enabled: next.enabled,
+        sequenceEnabled: next.sequenceEnabled,
         abandonedAfterMinutes: next.abandonedAfterMinutes,
         tokenTtlDays: next.tokenTtlDays,
         stepCount: next.steps.length,

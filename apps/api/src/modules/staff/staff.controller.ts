@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   Param,
+  Patch,
   Post,
   UseGuards,
 } from '@nestjs/common';
@@ -15,8 +16,12 @@ import { AuthGuard, PermissionsGuard } from '../../common/auth/guards';
 import type { AuthPrincipal } from '../../common/auth/principal';
 import {
   createStaffSchema,
+  inviteStaffSchema,
+  staffProfileUpdateSchema,
   staffRolesSchema,
   type CreateStaff,
+  type InviteStaff,
+  type StaffProfileUpdate,
   type StaffRolesUpdate,
 } from './dto/staff.dto';
 import { StaffService } from './staff.service';
@@ -44,6 +49,32 @@ export class StaffController {
   ) {
     const dto: CreateStaff = parseBody(createStaffSchema, body);
     return this.staff.create(dto, user);
+  }
+
+  @Post('invite')
+  @UseGuards(AuthGuard, PermissionsGuard)
+  @RequirePermission('staff.manage')
+  async invite(
+    @Body() body: unknown,
+    @CurrentUser() user: AuthPrincipal | null,
+  ) {
+    const dto: InviteStaff = parseBody(inviteStaffSchema, body);
+    return this.staff.invite(dto, user);
+  }
+
+  @Patch(':id')
+  @UseGuards(AuthGuard, PermissionsGuard)
+  @RequirePermission('staff.manage')
+  async updateProfile(
+    @Param('id') id: string,
+    @Body() body: unknown,
+    @CurrentUser() user: AuthPrincipal | null,
+  ) {
+    const dto: StaffProfileUpdate = parseBody(
+      staffProfileUpdateSchema,
+      body,
+    );
+    return this.staff.updateProfile(id, dto, user);
   }
 
   @Post(':id/roles')

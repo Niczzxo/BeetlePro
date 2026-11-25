@@ -1,4 +1,8 @@
 import { Injectable } from '@nestjs/common';
+import type {
+  NotificationCategory,
+  NotificationPreference,
+} from '@dostelo/types';
 import { iso } from '../../../prisma/prisma.helpers';
 import { PrismaService, type Tx } from '../../../prisma/prisma.service';
 import type { NotificationReadRecord } from '../../../store/in-memory.store';
@@ -27,6 +31,7 @@ export class PrismaNotificationsRepository extends NotificationsRepository {
       adminUserId: row.adminUserId,
       notificationKey: row.notificationKey,
       readAt: iso(row.readAt),
+      hidden: row.hidden,
     }));
   }
 
@@ -50,5 +55,69 @@ export class PrismaNotificationsRepository extends NotificationsRepository {
       marked += 1;
     }
     return marked;
+  }
+
+  async markUnread(
+    adminUserId: string,
+    keys: string[],
+    tx?: Tx,
+  ): Promise<number> {
+    const result = await this.db(tx).notificationRead.deleteMany({
+      where: { adminUserId, notificationKey: { in: keys }, hidden: false },
+    });
+    return result.count;
+  }
+
+  async markHidden(
+    adminUserId: string,
+    keys: string[],
+    tx?: Tx,
+  ): Promise<number> {
+    const db = this.db(tx);
+    let hidden = 0;
+    for (const key of keys) {
+      await db.notificationRead.upsert({
+        where: {
+          adminUserId_notificationKey: { adminUserId, notificationKey: key },
+        },
+        create: { adminUserId, notificationKey: key, hidden: true },
+        update: { hidden: true },
+      });
+      hidden += 1;
+    }
+    return hidden;
+  }
+
+  async getPreference(
+    adminUserId: string,
+    tx?: Tx,
+  ): Promise<NotificationPreference | null> {
+    const row = await this.db(tx).notificationPreference.findUnique({
+      where: { adminUserId },
+    });
+    if (!row) return null;
+    return {
+      adminUserId: row.adminUserId,
+      categories: (row.categories as NotificationCategory[]) ?? [],
+      emailEnabled: row.emailEnabled,
+    };
+  }
+
+  async savePreference(
+    preference: NotificationPreference,
+    tx?: Tx,
+  ): Promise<void> {
+    await this.db(tx).notificationPreference.upsert({
+      where: { adminUserId: preference.adminUserId },
+      create: {
+        adminUserId: preference.adminUserId,
+        categories: preference.categories,
+        emailEnabled: preference.emailEnabled,
+      },
+      update: {
+        categories: preference.categories,
+        emailEnabled: preference.emailEnabled,
+      },
+    });
   }
 }

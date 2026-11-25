@@ -3,6 +3,7 @@ import {
   Injectable,
   NotFoundException,
   Optional,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { randomInt, randomUUID } from 'node:crypto';
 import {
@@ -170,6 +171,19 @@ export class CheckoutService {
 
     const orderCount = await this.orderCountFor(dto);
     const settings = await this.settings.get();
+    // Website Management quick settings, enforced here at the
+    // one totals path: a closed store quotes nothing, and COD
+    // is refused while the store has it switched off.
+    if (!settings.storeLive) {
+      throw new ServiceUnavailableException(
+        'The store is currently closed and is not accepting orders',
+      );
+    }
+    if (dto.paymentMethod === 'cod' && !settings.allowCod) {
+      throw new BadRequestException(
+        'Cash on Delivery is not currently accepted by this store',
+      );
+    }
     /** The fee table lives in the store settings (Website
      * Management); its defaults are the live 70 / 100 / 150 taka
      * zone fees and the 10 taka COD fee. */

@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { AuditModule } from '../audit/audit.module';
 import { IntegrationsController } from './integrations.controller';
 import { IntegrationsService } from './integrations.service';
 
@@ -8,6 +9,7 @@ import { IntegrationsService } from './integrations.service';
  * configuration (credentials live in the environment by design).
  */
 @Module({
+  imports: [AuditModule],
   controllers: [IntegrationsController],
   providers: [IntegrationsService],
   exports: [IntegrationsService],

@@ -2,7 +2,10 @@ import { Module } from '@nestjs/common';
 import { CartRecoveryModule } from '../cart-recovery/cart-recovery.module';
 import { CatalogModule } from '../catalog/catalog.module';
 import { InventoryModule } from '../inventory/inventory.module';
+import { LeadsModule } from '../leads/leads.module';
 import { OrdersModule } from '../orders/orders.module';
+import { PaymentsModule } from '../payments/payments.module';
+import { SupportModule } from '../support/support.module';
 import { NotificationsController } from './notifications.controller';
 import { NotificationsService } from './notifications.service';
 import { NotificationsRepository } from './repositories/notifications.repository';
@@ -15,7 +18,15 @@ import { PrismaNotificationsRepository } from './repositories/prisma-notificatio
  * stored state.
  */
 @Module({
-  imports: [OrdersModule, InventoryModule, CatalogModule, CartRecoveryModule],
+  imports: [
+    OrdersModule,
+    InventoryModule,
+    CatalogModule,
+    CartRecoveryModule,
+    PaymentsModule,
+    LeadsModule,
+    SupportModule,
+  ],
   controllers: [NotificationsController],
   providers: [
     NotificationsService,

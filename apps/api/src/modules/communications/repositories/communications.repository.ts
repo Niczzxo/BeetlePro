@@ -11,6 +11,7 @@ export interface CommunicationLogFilter {
   customerId?: string;
   leadId?: string;
   abandonedCartId?: string;
+  campaignId?: string;
 }
 
 /**

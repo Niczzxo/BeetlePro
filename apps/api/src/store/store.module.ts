@@ -4,6 +4,8 @@ import {
   TransactionRunner,
 } from '../prisma/transaction-runner';
 import { SeedService } from '../seed/seed.service';
+import { AutomationExecutionsRepository } from './automation-executions.repository';
+import { InMemoryAutomationExecutionsRepository } from './in-memory-automation-executions.repository';
 import { InMemoryDatabase } from './in-memory.store';
 import { InMemorySettingsRepository } from './in-memory-settings.repository';
 import { OrderEventBus } from './order-event-bus';
@@ -27,12 +29,17 @@ import { SettingsRepository } from './settings.repository';
     SeedService,
     OrderEventBus,
     { provide: SettingsRepository, useClass: InMemorySettingsRepository },
+    {
+      provide: AutomationExecutionsRepository,
+      useClass: InMemoryAutomationExecutionsRepository,
+    },
     { provide: TransactionRunner, useClass: NoopTransactionRunner },
   ],
   exports: [
     InMemoryDatabase,
     OrderEventBus,
     SettingsRepository,
+    AutomationExecutionsRepository,
     TransactionRunner,
   ],
 })

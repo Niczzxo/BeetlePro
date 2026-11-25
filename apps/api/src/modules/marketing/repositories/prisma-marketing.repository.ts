@@ -1,5 +1,8 @@
 import { Injectable } from '@nestjs/common';
-import type { Campaign as CampaignRow } from '@prisma/client';
+import type {
+  Campaign as CampaignRow,
+  Prisma,
+} from '@prisma/client';
 import type { Campaign, CampaignStatus } from '@dostelo/types';
 import {
   fromEnum,
@@ -16,11 +19,42 @@ function toDomain(row: CampaignRow): Campaign {
     name: row.name,
     channel: fromEnum(row.channel),
     audienceNote: row.audienceNote,
+    segmentKey: row.segmentKey as Campaign['segmentKey'],
+    segmentRules: row.segmentRules
+      ? (row.segmentRules as unknown as Campaign['segmentRules'])
+      : null,
+    templateKey: row.templateKey,
+    subject: row.subject,
+    body: row.body,
     status: fromEnum(row.status),
     scheduledFor: row.scheduledFor ? iso(row.scheduledFor) : null,
+    sentAt: row.sentAt ? iso(row.sentAt) : null,
+    sendNote: row.sendNote,
     createdById: row.createdById,
     createdAt: iso(row.createdAt),
     updatedAt: iso(row.updatedAt),
+  };
+}
+
+function toRow(campaign: Campaign) {
+  return {
+    name: campaign.name,
+    channel: toEnum<CampaignRow['channel']>(campaign.channel),
+    audienceNote: campaign.audienceNote,
+    segmentKey: campaign.segmentKey,
+    segmentRules: campaign.segmentRules
+      ? (campaign.segmentRules as unknown as Prisma.InputJsonValue)
+      : undefined,
+    templateKey: campaign.templateKey,
+    subject: campaign.subject,
+    body: campaign.body,
+    status: toEnum<CampaignRow['status']>(campaign.status),
+    scheduledFor: campaign.scheduledFor
+      ? date(campaign.scheduledFor)
+      : null,
+    sentAt: campaign.sentAt ? date(campaign.sentAt) : null,
+    sendNote: campaign.sendNote,
+    createdById: campaign.createdById,
   };
 }
 
@@ -37,17 +71,7 @@ export class PrismaMarketingRepository extends MarketingRepository {
 
   async create(campaign: Campaign, tx?: Tx): Promise<Campaign> {
     const row = await this.db(tx).campaign.create({
-      data: {
-        id: campaign.id,
-        name: campaign.name,
-        channel: toEnum<CampaignRow['channel']>(campaign.channel),
-        audienceNote: campaign.audienceNote,
-        status: toEnum<CampaignRow['status']>(campaign.status),
-        scheduledFor: campaign.scheduledFor
-          ? date(campaign.scheduledFor)
-          : null,
-        createdById: campaign.createdById,
-      },
+      data: { id: campaign.id, ...toRow(campaign) },
     });
     return toDomain(row);
   }
@@ -55,16 +79,7 @@ export class PrismaMarketingRepository extends MarketingRepository {
   async save(campaign: Campaign, tx?: Tx): Promise<void> {
     await this.db(tx).campaign.update({
       where: { id: campaign.id },
-      data: {
-        name: campaign.name,
-        channel: toEnum<CampaignRow['channel']>(campaign.channel),
-        audienceNote: campaign.audienceNote,
-        status: toEnum<CampaignRow['status']>(campaign.status),
-        scheduledFor: campaign.scheduledFor
-          ? date(campaign.scheduledFor)
-          : null,
-        createdById: campaign.createdById,
-      },
+      data: toRow(campaign),
     });
   }
 

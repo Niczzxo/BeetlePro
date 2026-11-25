@@ -86,6 +86,13 @@ export class TokenService {
 
   /** Revokes every still-active session in a family. Used when a
    * rotated token is reused, which means the token chain leaked. */
+  async listBySubject(
+    subjectType: 'customer' | 'admin',
+    subjectId: string,
+  ): Promise<StoredSession[]> {
+    return this.sessions.listBySubject(subjectType, subjectId);
+  }
+
   async revokeFamily(familyId: string): Promise<void> {
     for (const session of await this.sessions.listByFamily(familyId)) {
       if (!session.revokedAt) {

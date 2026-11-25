@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { ReturnRequest } from '@dostelo/types';
+import type { ReturnEvent, ReturnRequest } from '@dostelo/types';
 import { InMemoryDatabase } from '../../../store/in-memory.store';
 import {
   ReturnsRepository,
@@ -34,5 +34,15 @@ export class InMemoryReturnsRepository extends ReturnsRepository {
             request.orderNumber === filter.orderNumber),
       )
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  }
+
+  async appendEvent(event: ReturnEvent): Promise<void> {
+    this.db.returnEvents.push(event);
+  }
+
+  async listEvents(returnId: string): Promise<ReturnEvent[]> {
+    return this.db.returnEvents.filter(
+      (event) => event.returnId === returnId,
+    );
   }
 }

@@ -8,7 +8,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import type { CampaignStatus } from '@dostelo/types';
+import type { CampaignChannel, CampaignStatus } from '@dostelo/types';
 import { parseBody } from '../../common/parse-body';
 import {
   CurrentUser,
@@ -37,11 +37,37 @@ export class MarketingController {
     return { items: await this.marketing.list({ status }) };
   }
 
+  @Get('segments')
+  @UseGuards(AuthGuard, PermissionsGuard)
+  @RequirePermission('marketing.read')
+  async segments(@Query('channel') channel?: CampaignChannel) {
+    return {
+      items: await this.marketing.listSegments(channel ?? 'whatsapp'),
+    };
+  }
+
   @Get(':id')
   @UseGuards(AuthGuard, PermissionsGuard)
   @RequirePermission('marketing.read')
   async get(@Param('id') id: string) {
     return this.marketing.getById(id);
+  }
+
+  @Get(':id/stats')
+  @UseGuards(AuthGuard, PermissionsGuard)
+  @RequirePermission('marketing.read')
+  async stats(@Param('id') id: string) {
+    return this.marketing.getStats(id);
+  }
+
+  @Post(':id/send')
+  @UseGuards(AuthGuard, PermissionsGuard)
+  @RequirePermission('marketing.edit')
+  async send(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthPrincipal | null,
+  ) {
+    return this.marketing.sendCampaign(id, user);
   }
 
   @Post()

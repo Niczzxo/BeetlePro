@@ -6,6 +6,7 @@ import { CustomersModule } from '../customers/customers.module';
 import { LeadsModule } from '../leads/leads.module';
 import { OrdersModule } from '../orders/orders.module';
 import { PaymentsModule } from '../payments/payments.module';
+import { IntegrationsModule } from '../integrations/integrations.module';
 import { ShippingModule } from '../shipping/shipping.module';
 import { BackupController } from './backup.controller';
 import { BackupService } from './backup.service';
@@ -28,6 +29,7 @@ import { PrismaBackupRepository } from './repositories/prisma-backup.repository'
     CartRecoveryModule,
     ShippingModule,
     AuditModule,
+    IntegrationsModule,
   ],
   controllers: [BackupController],
   providers: [

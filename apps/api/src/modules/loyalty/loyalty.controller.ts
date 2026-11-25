@@ -17,8 +17,10 @@ import type { AuthPrincipal } from '../../common/auth/principal';
 import {
   loyaltyAdjustSchema,
   loyaltyRulesSchema,
+  pointsRuleSchema,
   type LoyaltyAdjust,
   type LoyaltyRulesUpdate,
+  type PointsRuleUpsert,
 } from './dto/loyalty.dto';
 import { LoyaltyService } from './loyalty.service';
 
@@ -44,6 +46,31 @@ export class LoyaltyController {
   ) {
     const dto: LoyaltyRulesUpdate = parseBody(loyaltyRulesSchema, body);
     return this.loyalty.updateRules(dto, user);
+  }
+
+  @Get('point-rules')
+  @UseGuards(AuthGuard, PermissionsGuard)
+  @RequirePermission('marketing.read')
+  async pointRules() {
+    return { items: await this.loyalty.listPointRules() };
+  }
+
+  @Post('point-rules')
+  @UseGuards(AuthGuard, PermissionsGuard)
+  @RequirePermission('marketing.edit')
+  async upsertPointRule(
+    @Body() body: unknown,
+    @CurrentUser() user: AuthPrincipal | null,
+  ) {
+    const dto: PointsRuleUpsert = parseBody(pointsRuleSchema, body);
+    return { items: await this.loyalty.upsertPointRule(dto, user) };
+  }
+
+  @Get('transactions')
+  @UseGuards(AuthGuard, PermissionsGuard)
+  @RequirePermission('marketing.read')
+  async allTransactions() {
+    return { items: await this.loyalty.listAllTransactions() };
   }
 
   @Get('customers')

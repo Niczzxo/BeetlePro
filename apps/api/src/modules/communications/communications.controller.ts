@@ -1,8 +1,11 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
+  Param,
   Post,
+  Put,
   Query,
   UseGuards,
 } from '@nestjs/common';
@@ -21,7 +24,11 @@ import { AuthGuard, PermissionsGuard } from '../../common/auth/guards';
 import type { AuthPrincipal } from '../../common/auth/principal';
 import {
   manualCallLogSchema,
+  messageTemplateUpsertSchema,
+  staffSendSchema,
   type ManualCallLog,
+  type MessageTemplateUpsert,
+  type StaffSend,
 } from './dto/communication.dto';
 import { CommunicationsService } from './communications.service';
 
@@ -77,5 +84,64 @@ export class CommunicationsController {
   ) {
     const dto: ManualCallLog = parseBody(manualCallLogSchema, body);
     return this.communications.logManualCall(dto, user);
+  }
+
+  /**
+   * A staff-initiated message from the Communication Center. It
+   * goes through the same send path as the automated flows:
+   * suppression and consent are checked first, and an
+   * unconfigured provider records not-configured. The recorded
+   * log entry is returned so the portal shows the honest
+   * outcome, never an assumed success. Write access rides on
+   * recovery.edit, the same pattern as call logging.
+   */
+  @Post('send')
+  @RequirePermission('recovery.edit')
+  async sendMessage(
+    @Body() body: unknown,
+    @CurrentUser() user: AuthPrincipal,
+  ) {
+    const dto: StaffSend = parseBody(staffSendSchema, body);
+    return this.communications.send({
+      channel: dto.channel,
+      to: dto.to,
+      customerId: dto.customerId ?? null,
+      leadId: dto.leadId ?? null,
+      abandonedCartId: dto.abandonedCartId ?? null,
+      templateKey: dto.templateKey,
+      subject: dto.subject,
+      body: dto.body,
+      purpose: dto.purpose,
+      staffId: user.id,
+    });
+  }
+
+  @Get('templates')
+  @RequirePermission('communications.read')
+  async listTemplates() {
+    return { items: await this.communications.listTemplates() };
+  }
+
+  @Put('templates/:key')
+  @RequirePermission('recovery.edit')
+  async upsertTemplate(
+    @Param('key') key: string,
+    @Body() body: unknown,
+    @CurrentUser() user: AuthPrincipal,
+  ) {
+    const dto: MessageTemplateUpsert = parseBody(
+      messageTemplateUpsertSchema,
+      body,
+    );
+    return this.communications.upsertTemplate(key, dto, user);
+  }
+
+  @Delete('templates/:key')
+  @RequirePermission('recovery.edit')
+  async deleteTemplate(
+    @Param('key') key: string,
+    @CurrentUser() user: AuthPrincipal,
+  ) {
+    return this.communications.deleteTemplate(key, user);
   }
 }

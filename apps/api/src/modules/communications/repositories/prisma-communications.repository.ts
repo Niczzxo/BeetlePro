@@ -35,6 +35,7 @@ export class PrismaCommunicationsRepository extends CommunicationsRepository {
       visitorId: row.visitorId,
       leadId: row.leadId,
       abandonedCartId: row.abandonedCartId,
+      campaignId: row.campaignId,
       templateKey: row.templateKey,
       subject: row.subject,
       body: row.body,
@@ -61,6 +62,7 @@ export class PrismaCommunicationsRepository extends CommunicationsRepository {
         visitorId: entry.visitorId,
         leadId: entry.leadId,
         abandonedCartId: entry.abandonedCartId,
+        campaignId: entry.campaignId,
         templateKey: entry.templateKey,
         subject: entry.subject,
         body: entry.body,
@@ -89,6 +91,7 @@ export class PrismaCommunicationsRepository extends CommunicationsRepository {
         customerId: filter.customerId,
         leadId: filter.leadId,
         abandonedCartId: filter.abandonedCartId,
+        campaignId: filter.campaignId,
       },
       orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
     });

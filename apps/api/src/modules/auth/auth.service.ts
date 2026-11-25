@@ -69,6 +69,85 @@ export class AuthService implements OnModuleInit {
     void this.seedAdminFromEnvironment();
   }
 
+  // ------------------------------------------------------------------
+  // Own session management (Security redesign)
+  // ------------------------------------------------------------------
+
+  /** The caller's own refresh families, grouped from their
+   * session records. Device, browser and IP are not captured by
+   * the auth flow today, so they are not reported. */
+  async listOwnSessions(principal: AuthPrincipal) {
+    const sessions = await this.tokens.listBySubject(
+      principal.type,
+      principal.id,
+    );
+    const families = new Map<
+      string,
+      {
+        familyId: string;
+        createdAt: string;
+        lastActiveAt: string;
+        expiresAt: string;
+        active: boolean;
+      }
+    >();
+    for (const session of sessions) {
+      const family = families.get(session.familyId);
+      const active = !session.revokedAt && session.expiresAt > new Date().toISOString();
+      if (!family) {
+        families.set(session.familyId, {
+          familyId: session.familyId,
+          createdAt: session.createdAt,
+          lastActiveAt: session.createdAt,
+          expiresAt: session.expiresAt,
+          active,
+        });
+      } else {
+        if (session.createdAt < family.createdAt) family.createdAt = session.createdAt;
+        if (session.createdAt > family.lastActiveAt) family.lastActiveAt = session.createdAt;
+        if (session.expiresAt > family.expiresAt) family.expiresAt = session.expiresAt;
+        family.active = family.active || active;
+      }
+    }
+    return [...families.values()].sort((a, b) =>
+      b.lastActiveAt.localeCompare(a.lastActiveAt),
+    );
+  }
+
+  async revokeOwnFamily(
+    principal: AuthPrincipal,
+    familyId: string,
+  ): Promise<{ revoked: boolean }> {
+    const sessions = await this.tokens.listBySubject(
+      principal.type,
+      principal.id,
+    );
+    if (!sessions.some((session) => session.familyId === familyId)) {
+      return { revoked: false };
+    }
+    await this.tokens.revokeFamily(familyId);
+    return { revoked: true };
+  }
+
+  async revokeOtherFamilies(
+    principal: AuthPrincipal,
+    keepFamilyId: string,
+  ): Promise<{ revokedFamilies: number }> {
+    const sessions = await this.tokens.listBySubject(
+      principal.type,
+      principal.id,
+    );
+    const others = new Set(
+      sessions
+        .map((session) => session.familyId)
+        .filter((familyId) => familyId !== keepFamilyId),
+    );
+    for (const familyId of others) {
+      await this.tokens.revokeFamily(familyId);
+    }
+    return { revokedFamilies: others.size };
+  }
+
   // ----------------------------------------------------------------
   // Admin seeding
   // ----------------------------------------------------------------

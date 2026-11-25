@@ -1,4 +1,4 @@
-import { BadRequestException } from '@nestjs/common';
+import { NotFoundException } from '@nestjs/common';
 import { describe, expect, it } from 'vitest';
 import { permissionsForRoles } from '@dostelo/types';
 import type { AuthPrincipal } from '../../common/auth/principal';
@@ -7,7 +7,7 @@ import { createTestContext } from '../../testing/test-context';
 /**
  * Legal service tests: the six documents from the master
  * structure exist as label defaults until staff save content,
- * saves round-trip, and unknown slugs are refused.
+ * saves round-trip, and unknown slugs are refused with a 404.
  */
 const actor: AuthPrincipal = {
   type: 'admin',
@@ -52,7 +52,7 @@ describe('LegalService', () => {
   it('refuses an unknown slug', async () => {
     const ctx = createTestContext();
     await expect(ctx.legal.get('cookies')).rejects.toBeInstanceOf(
-      BadRequestException,
+      NotFoundException,
     );
   });
 });

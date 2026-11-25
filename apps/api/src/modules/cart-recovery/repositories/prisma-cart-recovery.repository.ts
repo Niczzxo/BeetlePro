@@ -256,11 +256,15 @@ export class PrismaCartRecoveryRepository extends CartRecoveryRepository {
       }),
     ]);
     const scalars = scalarsRow?.recoverySettings as {
+      enabled?: boolean;
+      sequenceEnabled?: boolean;
       abandonedAfterMinutes?: number;
       tokenTtlDays?: number;
     } | null;
     if (scalars && stepRows.length > 0) {
       return {
+        enabled: scalars.enabled ?? true,
+        sequenceEnabled: scalars.sequenceEnabled ?? true,
         abandonedAfterMinutes: scalars.abandonedAfterMinutes ?? 60,
         tokenTtlDays: scalars.tokenTtlDays ?? 30,
         steps: stepRows.map((row) => ({
@@ -273,6 +277,8 @@ export class PrismaCartRecoveryRepository extends CartRecoveryRepository {
     }
     const config = recoveryConfig();
     const seeded: RecoverySettings = {
+      enabled: true,
+      sequenceEnabled: true,
       abandonedAfterMinutes: config.abandonedAfterMinutes,
       tokenTtlDays: config.tokenTtlDays,
       steps: DEFAULT_RECOVERY_SETTINGS.steps.map((step) => ({ ...step })),
@@ -287,6 +293,8 @@ export class PrismaCartRecoveryRepository extends CartRecoveryRepository {
   ): Promise<void> {
     const db = this.db(tx);
     const scalars = {
+      enabled: settings.enabled,
+      sequenceEnabled: settings.sequenceEnabled,
       abandonedAfterMinutes: settings.abandonedAfterMinutes,
       tokenTtlDays: settings.tokenTtlDays,
     } as Prisma.InputJsonValue;
