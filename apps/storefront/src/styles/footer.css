@@ -243,3 +243,17 @@ html{overscroll-behavior:none}
    exactly like the .drawer override above. */
 .toast{opacity:0;visibility:hidden;transition:transform .45s cubic-bezier(.22,.8,.3,1),opacity .3s ease,visibility 0s linear .45s}
 .toast.on{opacity:1;visibility:visible;transition:transform .45s cubic-bezier(.22,.8,.3,1),opacity .3s ease,visibility 0s}
+
+/* Hero poster crossfade, sequenced, synced from the live site:
+   the outgoing poster fades out fast (.3s) and the incoming one
+   only starts its fade once that is nearly done (.25s delay,
+   then .6s), so the two posters' captions are never readable at
+   the same time. The title and sub heights take the live file's
+   slack (2.34em and 3.02em) so a two-line title and a three-line
+   sub never clip. The base .hslide rules sit in the frozen
+   legacy.css, so only the changed declarations are applied as
+   overrides here, exactly like the .toast override above. */
+.hslide{transition:opacity .3s ease,visibility 0s linear .3s}
+.hslide.is-active{transition:opacity .6s ease .25s,visibility 0s}
+.hslide-title{height:2.34em}
+.hslide-sub{height:3.02em}
