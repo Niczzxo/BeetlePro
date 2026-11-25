@@ -284,7 +284,7 @@ describe.skipIf(!ENABLED)('Prisma repositories (integration)', () => {
     expect(reloaded.steps).toHaveLength(3);
   });
 
-  it('runs a full return against Prisma: restock, order returned, refund recorded', async () => {
+  it('runs a full return against Prisma: inspect restocks, order returned, refund recorded', async () => {
     const customer = await registerCustomer();
     const order = await ctx.checkout.placeOrder(
       await codRequest(customer.id),
@@ -317,18 +317,40 @@ describe.skipIf(!ENABLED)('Prisma repositories (integration)', () => {
       },
       prismaActor,
     );
+    // Approval alone restocks nothing under the new workflow.
     const approved = await ctx.returns.approve(request.id, prismaActor);
     expect(approved.status).toBe('approved');
-    expect(approved.restocked).toBe(true);
+    expect(approved.restocked).toBe(false);
+    await ctx.returns.recordReceived(request.id, prismaActor);
+    const inspected = await ctx.returns.completeInspection(
+      request.id,
+      {
+        condition: 'Good',
+        quantityReceived: item.quantity,
+        outcome: 'resellable',
+      },
+      prismaActor,
+    );
+    expect(inspected.restocked).toBe(true);
     const stockAfter = await ctx.inventoryService.getStock(variant.id);
     expect(stockAfter.onHand).toBe(stockBefore.onHand + item.quantity);
+    const handOff = await ctx.returns.handOffRefund(request.id, prismaActor);
+    expect(handOff.request.refundState).toBe('handed-off');
+    expect(handOff.refundId).toBeTruthy();
+    const payments = await ctx.paymentsRepo.listByOrder(order.id);
+    await ctx.payments.confirmRefund(
+      payments[0]!.id,
+      handOff.refundId as string,
+      {},
+      prismaActor,
+    );
+    const refunded = await ctx.returns.markRefunded(request.id, prismaActor);
+    expect(refunded.status).toBe('refunded');
+    const completed = await ctx.returns.complete(request.id, prismaActor);
+    expect(completed.status).toBe('completed');
     expect(
       (await ctx.ordersService.getByNumber(order.orderNumber)).status,
     ).toBe('returned');
-    const handOff = await ctx.returns.handOffRefund(request.id, prismaActor);
-    expect(handOff.request.refundState).toBe('handed-off');
-    const completed = await ctx.returns.complete(request.id, prismaActor);
-    expect(completed.status).toBe('completed');
   });
 
   it('round-trips the admin-ops seams: tickets, reviews, campaigns, loyalty, legal, settings', async () => {
