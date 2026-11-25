@@ -7,9 +7,7 @@
    not on screen, swipe past a 44px threshold changes poster, and
    the click that follows a drag is swallowed. Under
    prefers-reduced-motion there is no autoplay; dots and swipe
-   still work. The legacy also pauses while the ink bleed is on
-   screen; that check reads #inkCanvas.is-active exactly as the
-   original does (the ink step itself is still pending). */
+   still work. */
 
 import { useEffect, useRef } from 'react';
 import type { HeroPoster, StorefrontProduct } from '../../data/products';
@@ -30,7 +28,6 @@ export default function Hero({ posters, minis }: { posters: HeroPoster[]; minis:
     if (!slider) return;
     const slides = Array.prototype.slice.call(slider.querySelectorAll('.hslide')) as HTMLElement[];
     const dots = Array.prototype.slice.call(slider.querySelectorAll('.hdot')) as HTMLElement[];
-    const ink = document.getElementById('inkCanvas');
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     let idx = 0;
     let timer: ReturnType<typeof setInterval> | 0 = 0;
@@ -51,7 +48,6 @@ export default function Hero({ posters, minis }: { posters: HeroPoster[]; minis:
     function tick() {
       if (document.hidden) return;
       if (!slider!.offsetParent) return; /* home view not showing */
-      if (ink && ink.classList.contains('is-active')) return; /* ink bleed mid-flip */
       if (slider!.closest && slider!.closest('.anim-off')) return; /* hero off screen: do not crossfade big photos nobody can see */
       show(idx + 1);
     }

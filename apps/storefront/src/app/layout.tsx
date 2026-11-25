@@ -50,20 +50,14 @@ export const viewport: Viewport = {
   viewportFit: 'cover',
 };
 
-/* Theme init before paint, replicated exactly from the legacy head:
-   the visitor's saved choice only. There is deliberately NO
-   system-preference fallback - the store always opens in its light
-   off-white theme unless the visitor has used the navbar toggle to
-   choose dark on an earlier visit. */
-const THEME_INIT = `/* Theme init before paint: the visitor's saved choice only. There is
-   deliberately NO system-preference fallback - the store always opens
-   in its light off-white theme unless the visitor has used the navbar
-   toggle to choose dark on an earlier visit. */
-(function(){
-  var t = null;
-  try { t = localStorage.getItem('dostelo-theme'); } catch(e) {}
-  if (t !== 'dark' && t !== 'light') t = 'light';
-  document.documentElement.setAttribute('data-theme', t);
+/* Theme: light only, matching the live site after the dark theme
+   removal of 2026-11-26. The dark theme, its navbar toggle and the
+   ink-bleed flip machinery are gone (the full-page snapshot capture
+   system made the site heavy), so the pre-paint script pins the
+   light theme and clears any choice an older visit saved. */
+const THEME_INIT = `(function(){
+  document.documentElement.setAttribute('data-theme', 'light');
+  try { localStorage.removeItem('dostelo-theme'); } catch(e) {}
 })();`;
 
 export default function RootLayout({ children }: { children: ReactNode }) {
@@ -79,7 +73,6 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         />
       </head>
       <body>
-        <canvas id="inkCanvas" aria-hidden="true" data-html2canvas-ignore={true}></canvas>
         <div id="dragBadge" aria-hidden="true" data-html2canvas-ignore={true}>
           {'\u2039\u00A0Drag\u00A0\u203A'}
         </div>

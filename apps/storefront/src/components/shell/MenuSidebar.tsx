@@ -10,8 +10,8 @@
    Behaviour, mirrored from the live fix: the header burger
    opens the panel from the left over its own backdrop (never
    the bag's shared #scrim); the header row carries the
-   DOSTELO logo (the .logo rules in legacy.css pick the light
-   or dark lockup per theme, exactly as in the header) and a
+   DOSTELO logo (the .logo rules in legacy.css show the light
+   lockup, exactly as in the header) and a
    close button; the nav list mirrors the main nav exactly
    (same labels, same order, same data-nav routing through
    NavSystem) and every tap closes the panel; the bottom rows

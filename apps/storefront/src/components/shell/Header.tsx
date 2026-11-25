@@ -26,7 +26,6 @@
 
 import { useEffect, useRef } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import ThemeToggle from './ThemeToggle';
 import { useMenu } from '../../features/menu/Menu';
 import { useSearch } from '../../features/search/Search';
 import { useCart } from '../../features/cart/CartProvider';
@@ -201,7 +200,6 @@ export default function Header() {
               <path d="m20 20-3.8-3.8" />
             </svg>
           </button>
-          <ThemeToggle />
           <button className="hbtn" id="wishBtn" aria-label="Wishlist" onClick={onWishBtn}>
             <svg className="icon" viewBox="0 0 24 24">
               <path d="M12 20.4C7.3 16.8 4.1 13.7 4.1 10.2 4.1 7.6 6 5.6 8.4 5.6c1.5 0 2.9.8 3.6 2 .7-1.2 2.1-2 3.6-2 2.4 0 4.3 2 4.3 4.6 0 3.5-3.2 6.6-7.9 10.2Z" />

@@ -14,11 +14,10 @@
 /* ================= mobile header zones, footer redesign =================
    Header, phones only: .hbar becomes a three-zone grid (burger at the
    left edge, logo centred in the middle zone, the four action buttons
-   as one tight group at the right edge). Header height stays 72px, so
-   the ink theme snapshot alignment is unchanged. Desktop header rules
-   are not touched.
+   as one tight group at the right edge). Header height stays 72px.
+   Desktop header rules are not touched.
    Footer: one implementation at every width, always dark premium
-   (Warm Black #1C1B17, Off-white #F4F2ED) in both site themes. Desktop
+   (Warm Black #1C1B17, Off-white #F4F2ED). Desktop
    shows six columns with the trust items under the newsletter form,
    tablet tightens the columns and moves the trust items to a full
    width row, mobile centres the brand and newsletter and turns the
@@ -211,25 +210,16 @@ html.scroll-locked body{overflow:hidden}
    carries none, and the hero slider is a div with pan-y. The
    footer newsletter button's own :active transform is more
    specific than the opacity rule and still wins for transform;
-   both effects combine there, as they do on the live site.
-   The theme toggle's pending rules are the CSS half of the
-   live fix: while a tap waits on an on-demand snapshot capture
-   the button shows the chip background and a pulsing icon
-   (driven by features/theme/inkBleed.ts), and its opacity:1
-   outranks the pressed dim so the waiting state stays solid. */
+   both effects combine there, as they do on the live site. */
 button,a,input,select,textarea,label,[role="button"]{touch-action:manipulation}
 button:active{opacity:.72}
-#themeToggle.is-pending{background:var(--chip);cursor:wait;opacity:1}
-#themeToggle.is-pending .icon{animation:themeTapPulse .65s ease-in-out infinite alternate}
-@keyframes themeTapPulse{from{transform:scale(1)}to{transform:scale(1.18) rotate(12deg)}}
 
 /* No pull-to-refresh reload, synced from the live site: on the
    live file overscroll-behavior:none sits on the root html rule.
    Here that rule lives in the frozen legacy.css, so the single
    added declaration is applied as an override (this file imports
    after legacy.css). A stray pull on the 5 MB page otherwise
-   reloads the whole site and restarts the welcome modal and the
-   snapshot cycle from zero. */
+   reloads the whole site and restarts the welcome modal from zero. */
 html{overscroll-behavior:none}
 
 /* Toast full hide, synced from the live site: the off state there
