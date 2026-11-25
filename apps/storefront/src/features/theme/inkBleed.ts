@@ -1387,10 +1387,12 @@ export function initInkBleed(): void {
       root.classList.remove('theme-fade');
       window.clearTimeout(cssFadeTimer);
     }
-    /* A flip that is already waiting on snapshots owns this tap:
-       extra taps must not stack a second flip on top of it (the old
-       fall-through cross-faded immediately, then the pending flip
-       landed on top and flipped the theme straight back). */
+    /* A flip that is already waiting on snapshots would own this
+       tap: extra taps must not stack a second flip on top of it and
+       flip the theme straight back. No path waits on snapshots any
+       more (the not-ready case cross-fades immediately below), so
+       toggleBusy is never set; the check stays so a future waiting
+       path could not stack a second flip on top of a pending one. */
     if (toggleBusy) {
       setTogglePending(true);
       return;
@@ -1409,49 +1411,31 @@ export function initInkBleed(): void {
        both themes pinned at the tap: that recapture is why the
        first flip of a visit stalled for seconds while every later
        flip was instant. Nothing is invalidated or recaptured
-       here any more; a missing pair takes the bounded wait path
-       below, as before. */
+       here any more; a missing pair takes the instant cross-fade
+       path below. */
     const canAnimate =
       renderer !== null && !renderer.lost && !reducedMotion.matches && pairUsable(key);
 
     if (!canAnimate) {
-      /* The cross-fade fallback is only for genuinely unsupported cases
-         (no WebGL2, reduced motion, context lost, or a capture that
-         truly failed). If the snapshots simply are not ready yet -
-         first click, fresh view, layout just changed - capture them now
-         and run the real bleed as soon as they land. */
+      /* Two different cases share this branch. Genuinely unsupported
+         cases (no WebGL2, reduced motion, context lost, a flip
+         already on screen) keep their fallbacks below. But if the
+         snapshots simply are not ready yet (first tap, fresh view,
+         layout just changed), the tap is answered immediately with
+         the plain cross-fade flip: the old path parked the tap
+         behind ensureSnapshots, which polled every 150ms for up to
+         about 7.5 seconds and recaptured the whole page when a
+         snapshot was missing, so the first tap of a visit looked
+         dead and the eventual flip landed torn. The ink bleed now
+         runs only when a certified pair is already in hand at tap
+         time; a background capture is queued so the next tap can
+         bleed. */
       const unsupported = !renderer || renderer.lost || reducedMotion.matches || interrupting;
-      if (!unsupported && !toggleBusy) {
-        toggleBusy = true;
-        setTogglePending(true);
-        const startTheme = getTheme();
-        let settled = false;
-        /* The tap must always answer: if the snapshots are not ready
-           within a short wait, run the 2D ink fallback rather than
-           leaving the visitor staring at an unresponsive toggle
-           (the old wait could run past 7 seconds on a phone). */
-        const waitTimer = window.setTimeout(function () {
-          if (settled) return;
-          settled = true;
-          toggleBusy = false;
-          setTogglePending(false);
-          if (getTheme() === startTheme) inkFallback2D(otherTheme(startTheme), point);
-        }, 2800);
-        ensureSnapshots().then(function (ok) {
-          if (settled) return;
-          settled = true;
-          window.clearTimeout(waitTimer);
-          toggleBusy = false;
-          setTogglePending(false);
-          /* If the theme already changed while waiting, this tap has
-             been served - never flip a second time. */
-          if (getTheme() !== startTheme) return;
-          if (ok) toggle(point);
-          else {
-            cancelAnim();
-            inkFallback2D(otherTheme(startTheme), point);
-          }
-        });
+      if (!unsupported) {
+        cancelAnim();
+        setTogglePending(false);
+        crossFade(to);
+        scheduleCapture(0);
         return;
       }
       cancelAnim();
@@ -1557,9 +1541,9 @@ export function initInkBleed(): void {
      abandoned only when a fresh interaction lands or the tab
      hides; scrolling alone no longer invalidates its results,
      because the snapshots are true at any scroll position. A
-     theme flip never waits on any
-     of this: it captures on demand through ensureSnapshots, which
-     calls captureAll(true) directly, and only that path may pin. */
+     theme flip never waits on any of this: without a certified
+     pair it cross-fades at once and queues a background capture,
+     and only a capture already running for a flip may pin. */
   let lastScrollStamp = performance.now();
   let scrollGen = 0;
   /* Taps compete with captures too: a capture that starts right after
@@ -1764,7 +1748,7 @@ export function initInkBleed(): void {
                bleed becomes available instead of staying on the fallback.
                Repeated failures back off (captureFailStreak) so an
                unreachable CDN is not hammered forever - a toggle click
-               still forces a fresh attempt via ensureSnapshots. */
+               still queues a fresh background attempt. */
             if (window.console) console.warn('[ink] capture failed for ' + theme, err);
             captureFailStreak++;
             captureQueued = true;
@@ -1911,7 +1895,7 @@ export function initInkBleed(): void {
        re-capture on full load so both snapshots match the final layout.
        The first capture waits for load + idle: a full-document capture
        during first paint was a real source of early jank on phones,
-       and a toggle click can always capture on demand instead. */
+       and a toggle click answers with a cross-fade instead. */
     window.addEventListener('load', function () {
       const ric = (
         window as unknown as {
