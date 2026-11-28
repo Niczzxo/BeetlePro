@@ -1,14 +1,13 @@
 import type { MetadataRoute } from 'next';
 import { SITE_URL } from '../lib/seo';
+import { articles, categories, products } from '../data/products';
+import { collections, slugify } from '../lib/slugs';
 
-/* Built-in sitemap for the migrated storefront, the port
-   counterpart of the live site's root sitemap.xml. The live
-   file lists only its root because that site is a single-page
-   app; this app has real routes, so the crawlable public
-   routes are listed under the storefront's canonical origin
-   (SITE_URL in lib/seo.ts, https://dostelo-one.vercel.app).
-   Product and article pages are dynamic per item and are
-   covered by their index routes here. */
+/* Sitemap for the rebuilt storefront: every crawlable public
+   route, including the per-product, per-category, per-collection
+   and per-article pages. Personal routes (cart, checkout,
+   account, orders, recover, review links) are excluded here and
+   disallowed in robots.txt. */
 export default function sitemap(): MetadataRoute.Sitemap {
   const lastModified = new Date();
   const routes: { path: string; priority: number }[] = [
@@ -22,7 +21,22 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { path: '/policies/returns', priority: 0.3 },
     { path: '/policies/warranty', priority: 0.3 },
     { path: '/policies/faq', priority: 0.3 },
+    { path: '/policies/privacy', priority: 0.3 },
+    { path: '/policies/terms', priority: 0.3 },
+    { path: '/policies/refund', priority: 0.3 },
   ];
+  for (const c of categories) {
+    routes.push({ path: '/category/' + slugify(c.name), priority: 0.8 });
+  }
+  for (const col of collections()) {
+    routes.push({ path: '/collections/' + col.slug, priority: 0.6 });
+  }
+  for (const p of products) {
+    routes.push({ path: '/product/' + p.id, priority: 0.8 });
+  }
+  for (const a of articles) {
+    routes.push({ path: '/journal/' + a.id, priority: 0.5 });
+  }
   return routes.map((r) => ({
     url: SITE_URL + r.path,
     lastModified,

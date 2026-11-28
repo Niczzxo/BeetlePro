@@ -247,3 +247,10 @@ html{overscroll-behavior:none}
 .hslide.is-active{transition:opacity .6s ease .25s,visibility 0s}
 .hslide-title{height:2.34em}
 .hslide-sub{height:3.02em}
+
+/* Contact and support form selects share the legacy input styling.
+   Carried here, not in legacy.css, which stays byte-identical; the
+   recreate had briefly added the select selectors to legacy.css and
+   they were moved back out on 2026-11-28 to restore that contract. */
+.cform select{border:1px solid var(--line);background:var(--surface);border-radius:14px;padding:13px 16px;color:var(--ink);outline:none;width:100%;font:inherit}
+.cform select:focus{border-color:var(--ink)}

@@ -38,6 +38,7 @@ import { useWishlist } from '../../features/wishlist/WishlistProvider';
 import { useScrollLock } from '../../features/scrollLock';
 import ProductCard from '../home/ProductCard';
 import RevealSystem from '../home/RevealSystem';
+import ReviewsSection from './ReviewsSection';
 
 function sizeLabel(p: StorefrontProduct, curSize: string): string {
   if (p.sizes[0] === 'One size') return 'Size - One size';
@@ -372,6 +373,7 @@ export default function ProductDetail({
               ))}
             </div>
           </section>
+          <ReviewsSection productId={p.id} />
         </div>
       </div>
 

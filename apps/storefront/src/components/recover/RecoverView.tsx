@@ -18,8 +18,25 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { createApiClient } from '@dostelo/api-client';
-import type { RecoveryCartView } from '@dostelo/types';
+/* Contract note (fresh rebuild): the rebuilt @dostelo/api-client
+   has no recovery cart method and @dostelo/types no longer
+   exports RecoveryCartView, so the view shape is declared here
+   and read with fetch from the same public token endpoint. */
+export interface RecoveryCartLine {
+  productId: string;
+  variantId: string;
+  productName: string;
+  variantName: string;
+  quantity: number;
+  unitPrice: { amountMinor: number };
+  lineTotal: { amountMinor: number };
+}
+export interface RecoveryCartView {
+  status: string;
+  message?: string | null;
+  items: RecoveryCartLine[];
+  subtotal: { amountMinor: number };
+}
 import { byId } from '../../data/products';
 import { pvars, useCart } from '../../features/cart/CartProvider';
 import { money } from '../../lib/format';
@@ -29,7 +46,14 @@ import { money } from '../../lib/format';
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
 
-const client = createApiClient({ baseUrl: API_BASE_URL });
+async function getRecoveryCart(token: string): Promise<RecoveryCartView> {
+  const res = await fetch(
+    API_BASE_URL + '/v1/cart-recovery/' + encodeURIComponent(token),
+    { cache: 'no-store' },
+  );
+  if (!res.ok) throw new Error('recovery read failed: ' + res.status);
+  return (await res.json()) as RecoveryCartView;
+}
 
 type LoadState =
   | { kind: 'loading' }
@@ -90,8 +114,7 @@ export default function RecoverView({ token }: { token: string }) {
 
   useEffect(() => {
     let cancelled = false;
-    client
-      .getRecoveryCart(token)
+    getRecoveryCart(token)
       .then((view) => {
         if (!cancelled) setState({ kind: 'ready', view });
       })

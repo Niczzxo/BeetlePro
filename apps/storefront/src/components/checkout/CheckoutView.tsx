@@ -40,6 +40,21 @@ import { useCheckout } from '../../features/checkout/CheckoutProvider';
 import { ZONE_NAME } from '../../features/checkout/detectZone';
 import { useToast } from '../../features/toast/Toast';
 import { money } from '../../lib/format';
+import { getPaymentMethods, type PaymentMethodView } from '../../lib/publicApi';
+
+/* API gateway to the legacy payMethod strings the totals and
+   confirmation already speak. sslcommerz carries card payments,
+   so it lands on the Card option; shurjopay is its own option. */
+const GATEWAY_PAY: Record<string, string> = {
+  cod: 'Cash on Delivery',
+  bkash: 'bKash',
+  nagad: 'Nagad',
+  rocket: 'Rocket',
+  upay: 'Upay',
+  card: 'Card',
+  sslcommerz: 'Card',
+  shurjopay: 'ShurjoPay',
+};
 
 const PAY_OPTIONS: { pay: string; label: string; desc: string }[] = [
   {
@@ -110,6 +125,43 @@ export default function CheckoutView() {
   const co = useCheckout();
   const { toast } = useToast();
   const [placed, setPlaced] = useState<PlacedOrder | null>(null);
+  /* Payment methods from the API (GET /v1/checkout/payment-methods).
+     When the API answers, its list, labels, instructions and
+     configured flags are the truth: a gateway that is not
+     configured still renders, but selecting it shows the honest
+     unavailable note below instead of changing the method or
+     failing at submit. When the API does not answer, the legacy
+     options render as before and the note under them says the
+     live method list could not be loaded. */
+  const [apiMethods, setApiMethods] = useState<PaymentMethodView[] | null>(null);
+  const [payNotice, setPayNotice] = useState<string | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    getPaymentMethods().then((r) => {
+      if (live && r.ok) setApiMethods(r.data.items);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  function chooseMethod(m: PaymentMethodView) {
+    const pay = GATEWAY_PAY[m.gateway] ?? m.label;
+    if (!m.configured) {
+      setPayNotice(
+        m.label +
+          ' is not available right now: the store has not finished setting this payment method up. Please choose another method.',
+      );
+      return;
+    }
+    setPayNotice(null);
+    co.setPayMethod(pay);
+  }
+
+  const selectedApiMethod = apiMethods
+    ? (apiMethods.find((m) => (GATEWAY_PAY[m.gateway] ?? m.label) === co.payMethod) ?? null)
+    : null;
 
   /* renderCoAccount()'s prefill: when a customer signs in, the
      name (and the email, when the account id is one) fill the
@@ -417,26 +469,62 @@ export default function CheckoutView() {
                 <div className="co-card">
                   <h3>2 {'\u00B7'} Payment method</h3>
                   <div className="payopts" id="payOpts">
-                    {PAY_OPTIONS.map((o) => (
-                      <button
-                        key={o.pay}
-                        type="button"
-                        className={'payopt' + (co.payMethod === o.pay ? ' on' : '')}
-                        data-pay={o.pay}
-                        onClick={() => co.setPayMethod(o.pay)}
-                      >
-                        <span className="dot"></span>
-                        <span>
-                          <b>{o.label}</b>
-                          <span>{o.desc}</span>
-                        </span>
-                      </button>
-                    ))}
+                    {apiMethods
+                      ? apiMethods.map((m) => {
+                          const pay = GATEWAY_PAY[m.gateway] ?? m.label;
+                          const legacy = PAY_OPTIONS.find((o) => o.pay === pay);
+                          return (
+                            <button
+                              key={m.gateway}
+                              type="button"
+                              className={'payopt' + (co.payMethod === pay ? ' on' : '')}
+                              data-pay={pay}
+                              aria-disabled={!m.configured}
+                              style={m.configured ? undefined : { opacity: 0.55 }}
+                              onClick={() => chooseMethod(m)}
+                            >
+                              <span className="dot"></span>
+                              <span>
+                                <b>{m.label}</b>
+                                <span>
+                                  {m.configured
+                                    ? (m.deliveryNote ?? legacy?.desc ?? '')
+                                    : 'Not available right now'}
+                                </span>
+                              </span>
+                            </button>
+                          );
+                        })
+                      : PAY_OPTIONS.map((o) => (
+                          <button
+                            key={o.pay}
+                            type="button"
+                            className={'payopt' + (co.payMethod === o.pay ? ' on' : '')}
+                            data-pay={o.pay}
+                            onClick={() => co.setPayMethod(o.pay)}
+                          >
+                            <span className="dot"></span>
+                            <span>
+                              <b>{o.label}</b>
+                              <span>{o.desc}</span>
+                            </span>
+                          </button>
+                        ))}
                   </div>
+                  {payNotice ? (
+                    <p role="status" style={{ fontSize: 13.5, margin: '16px 0 0' }}>
+                      {payNotice}
+                    </p>
+                  ) : null}
+                  {selectedApiMethod?.instructions ? (
+                    <p style={{ fontSize: 13.5, color: 'var(--muted)', margin: '16px 0 0' }}>
+                      {selectedApiMethod.instructions}
+                    </p>
+                  ) : null}
                   <p style={{ fontSize: 13.5, color: 'var(--muted)', margin: '16px 0 0' }}>
-                    Payment step placeholder: on the live store this connects to the payment
-                    gateway; for mobile banking you receive our number with your order
-                    confirmation and use your order number as the reference.
+                    {apiMethods
+                      ? 'Delivery and courier details are confirmed with your order confirmation, exactly as the store service returns them.'
+                      : 'The live payment method list could not be loaded, so the standard methods are shown. For mobile banking you receive our number with your order confirmation and use your order number as the reference.'}
                   </p>
                 </div>
               </div>

@@ -250,7 +250,7 @@ export default function HomePage() {
               className="eyebrow"
               style={{ textTransform: 'none', letterSpacing: 0, fontSize: 14 }}
             >
-              4.9 average from 2,400 reviews
+              What families tell the workshop
             </div>
             <h2 style={{ fontSize: 'clamp(30px,3.6vw,44px)' }}>Worn &amp; loved across Bangladesh</h2>
           </div>

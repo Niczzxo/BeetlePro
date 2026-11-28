@@ -14,7 +14,7 @@
    page structure and classes); when none is published, the
    static view below renders exactly as before. */
 
-import type { PublicLegalDocument } from '@dostelo/types';
+import type { PublicLegalDocument } from '../../lib/legal';
 import FaqList from './FaqList';
 
 export const POLICY_SLUGS = [

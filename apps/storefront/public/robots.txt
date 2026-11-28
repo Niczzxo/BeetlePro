@@ -1,8 +1,10 @@
-# BEETLE PRO: robots.txt
-# Lives at the root of the site, next to index.html.
-# Live site: https://niczzxo.github.io/BeetlePro/
-
+# Dostelo storefront robots
 User-agent: *
 Allow: /
+Disallow: /checkout
+Disallow: /account
+Disallow: /orders
+Disallow: /cart
+Disallow: /recover/
 
-Sitemap: https://niczzxo.github.io/BeetlePro/sitemap.xml
+Sitemap: https://dostelo-one.vercel.app/sitemap.xml

@@ -10,6 +10,7 @@
    toast in the legacy contact flow. */
 
 import { useState, type FormEvent } from 'react';
+import SupportForm from '../support/SupportForm';
 
 export default function ContactView() {
   const [sent, setSent] = useState(false);
@@ -108,6 +109,7 @@ export default function ContactView() {
                 Thank you - your note is ready in your mail app. We reply within one working day.
               </div>
             </form>
+            <SupportForm />
           </div>
         </div>
       </div>

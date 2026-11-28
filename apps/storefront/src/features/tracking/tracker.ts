@@ -22,8 +22,19 @@
  *   marketing (lead contact, campaigns, recovery exclude them).
  */
 
-import { createApiClient } from '@dostelo/api-client';
-import type { VisitorEventType } from '@dostelo/types';
+/* Contract note (fresh rebuild): the rebuilt @dostelo/api-client
+   no longer exports the createApiClient factory or a visitor
+   event method, and @dostelo/types no longer exports
+   VisitorEventType. The tracker therefore posts to the same
+   /v1 visitor endpoints directly with fetch, fire-and-forget
+   exactly as before, and the event type union is declared here
+   from the event names this storefront actually sends. */
+export type VisitorEventType =
+  | 'page-view'
+  | 'product-view'
+  | 'search'
+  | 'add-to-cart'
+  | 'checkout-start';
 
 export const VISITOR_ID_KEY = 'dostelo-visitor-id';
 export const SESSION_ID_KEY = 'dostelo-session-id';
@@ -34,7 +45,15 @@ export const CONSENT_KEY = 'dostelo-consent';
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
 
-const client = createApiClient({ baseUrl: API_BASE_URL });
+async function postVisitor(path: string, body: unknown): Promise<void> {
+  const res = await fetch(API_BASE_URL + path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    keepalive: true,
+  });
+  if (!res.ok) throw new Error('visitor post failed: ' + res.status);
+}
 
 function randomId(): string {
   try {
@@ -118,13 +137,11 @@ export function recordMarketingConsent(
     // Storage unavailable: the choice simply does not persist.
   }
   try {
-    void client
-      .recordVisitorConsent({
-        visitorId: getVisitorId(),
-        scope: 'marketing',
-        status,
-      })
-      .catch(() => undefined);
+    void postVisitor('/v1/visitors/consent', {
+      visitorId: getVisitorId(),
+      scope: 'marketing',
+      status,
+    }).catch(() => undefined);
   } catch {
     // Never break the store over a consent post.
   }
@@ -149,15 +166,13 @@ export function trackEvent(
   path?: string,
 ): void {
   try {
-    void client
-      .recordVisitorEvent({
-        visitorId: getVisitorId(),
-        sessionId: getSessionId(),
-        type,
-        path: path ?? window.location.pathname,
-        payload,
-      })
-      .catch(() => undefined);
+    void postVisitor('/v1/visitor-events', {
+      visitorId: getVisitorId(),
+      sessionId: getSessionId(),
+      type,
+      path: path ?? window.location.pathname,
+      payload,
+    }).catch(() => undefined);
   } catch {
     // Tracking must never break the store.
   }

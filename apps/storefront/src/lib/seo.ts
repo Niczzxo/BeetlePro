@@ -136,10 +136,11 @@ export function articleSeo(a: StorefrontArticle): SeoPair {
     twitter:description per view and pointed og:image and
     twitter:image at the one share image, so the pair carries
     those here too. */
-export function seoMetadata(pair: SeoPair): Metadata {
+export function seoMetadata(pair: SeoPair, path?: string): Metadata {
   return {
     title: pair.title,
     description: pair.desc,
+    ...(path ? { alternates: { canonical: SITE_URL + path } } : {}),
     openGraph: {
       title: pair.title,
       description: pair.desc,

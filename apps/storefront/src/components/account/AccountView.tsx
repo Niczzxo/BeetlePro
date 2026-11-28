@@ -32,6 +32,8 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { useAccount } from '../../features/account/AccountProvider';
 import { useCart } from '../../features/cart/CartProvider';
 import { useToast } from '../../features/toast/Toast';
+import LoyaltyPanel from './LoyaltyPanel';
+import ReturnsPanel from './ReturnsPanel';
 
 export default function AccountView() {
   const { user, isAdmin, orderCount, signIn, signUp, signOut } = useAccount();
@@ -195,6 +197,10 @@ export default function AccountView() {
                 </button>
               </div>
             </div>
+          </div>
+          <div hidden={!user} style={{ maxWidth: 640 }}>
+            <ReturnsPanel />
+            <LoyaltyPanel />
           </div>
           <div
             className="co-card"

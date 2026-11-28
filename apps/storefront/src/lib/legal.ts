@@ -9,7 +9,19 @@
    unpublish in the admin portal takes effect on the next request
    without a rebuild. */
 
-import type { PublicLegalDocument } from '@dostelo/types';
+import type { LegalDocument } from '@dostelo/types';
+
+/** The public shape the policy pages render: the published body
+   of the API's LegalDocument under the field names the previous
+   build used. Contract note (fresh rebuild): the rebuilt
+   @dostelo/types exports LegalDocument (with publishedBody)
+   rather than a separate PublicLegalDocument, so the mapping
+   happens here, in one place. */
+export interface PublicLegalDocument {
+  slug: string;
+  title: string;
+  body: string;
+}
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
@@ -22,11 +34,11 @@ export async function getPublishedLegalDocument(
       cache: 'no-store',
     });
     if (!res.ok) return null;
-    const doc = (await res.json()) as PublicLegalDocument;
-    if (!doc || typeof doc.body !== 'string' || doc.body.length === 0) {
+    const doc = (await res.json()) as LegalDocument;
+    if (!doc || typeof doc.publishedBody !== 'string' || doc.publishedBody.length === 0) {
       return null;
     }
-    return doc;
+    return { slug: doc.slug, title: doc.title, body: doc.publishedBody };
   } catch {
     return null;
   }
