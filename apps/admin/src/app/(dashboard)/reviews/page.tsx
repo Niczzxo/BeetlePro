@@ -53,18 +53,18 @@ type TabKey = 'all' | ReviewStatus;
 type SortKey = 'createdAt' | 'rating' | 'status' | 'authorName';
 
 const RATING_COLORS: Record<number, string> = {
-  5: '#1FA855',
-  4: '#7C5CFF',
-  3: '#E8930C',
-  2: '#C7509B',
-  1: '#E5484D',
+  5: '#1E6B34',
+  4: '#1C1B17',
+  3: '#8A5A00',
+  2: '#55524A',
+  1: '#B42318',
 };
 
 function Stars({ rating, size = 14 }: { rating: number; size?: number }) {
   return (
     <span aria-label={`${rating} out of 5 stars`} style={{ display: 'inline-flex', gap: 1 }}>
       {[1, 2, 3, 4, 5].map((value) => (
-        <Star key={value} size={size} fill={value <= rating ? '#E8930C' : 'none'} color="#E8930C" />
+        <Star key={value} size={size} fill={value <= rating ? '#8A5A00' : 'none'} color="#8A5A00" />
       ))}
     </span>
   );
@@ -529,7 +529,7 @@ function AddReviewModal({ products, onClose, onCreated }: {
           <span style={{ display: 'flex', gap: 4 }}>
             {[1, 2, 3, 4, 5].map((value) => (
               <button type="button" key={value} className="btn btn-small btn-secondary" onClick={() => setRating(value)} aria-label={`${value} stars`}>
-                <Star size={16} fill={value <= rating ? '#E8930C' : 'none'} color="#E8930C" /> {value}
+                <Star size={16} fill={value <= rating ? '#8A5A00' : 'none'} color="#8A5A00" /> {value}
               </button>
             ))}
           </span>

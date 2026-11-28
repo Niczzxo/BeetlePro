@@ -293,9 +293,9 @@ function FunnelCard({ sessions }: { sessions: BuyerSessionSummary[] }) {
 function SegmentsCard({ sessions }: { sessions: BuyerSessionSummary[] }) {
   const total = sessions.length;
   const rows: Array<{ band: Band; label: string; color: string }> = [
-    { band: 'hot', label: 'Hot (score 70+)', color: '#E4572E' },
-    { band: 'warm', label: 'Warm (score 40 to 69)', color: '#E9A13B' },
-    { band: 'cold', label: 'Cold (below 40)', color: '#7A76A8' },
+    { band: 'hot', label: 'Hot (score 70+)', color: '#B42318' },
+    { band: 'warm', label: 'Warm (score 40 to 69)', color: '#8A5A00' },
+    { band: 'cold', label: 'Cold (below 40)', color: '#6E695D' },
   ];
   return (
     <div className="card">

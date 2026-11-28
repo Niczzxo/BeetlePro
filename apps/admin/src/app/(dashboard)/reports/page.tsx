@@ -67,7 +67,7 @@ type Preset =
   | 'custom';
 
 const ZONES: DeliveryZone[] = ['dhaka-city', 'dhaka-sub-city', 'outside-dhaka'];
-const DONUT_COLORS = ['#7C5CFF', '#22B07D', '#FF9F43', '#4E9BFF', '#E85D9E', '#8A93A6'];
+const DONUT_COLORS = ['#1C1B17', '#45423B', '#6E695D', '#8A8578', '#B3AC9D', '#D8D3C6'];
 
 function startOfDay(date: Date): Date {
   const copy = new Date(date);

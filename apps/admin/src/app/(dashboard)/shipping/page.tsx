@@ -565,7 +565,7 @@ export default function ShippingPage() {
           <EmptyNote>No shipping integrations were reported by the API.</EmptyNote>
         ) : null}
         {shippingIntegrations.map((integration) => (
-          <div key={integration.key} style={{ padding: '10px 0', borderTop: '1px solid var(--adm-border, #eceaf3)' }}>
+          <div key={integration.key} style={{ padding: '10px 0', borderTop: '1px solid var(--adm-border, #EFECE5)' }}>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
               <strong>{integration.name}</strong>
               {integration.configured ? (

@@ -365,9 +365,9 @@ export default function DashboardPage() {
               centreValue={stockRows.length.toLocaleString('en-US')}
               centreLabel="Variants"
               slices={[
-                { label: 'In Stock', value: inStock, color: '#1FA855' },
-                { label: 'Low Stock', value: lowStock, color: '#E8930C' },
-                { label: 'Out of Stock', value: outOfStock, color: '#E5484D' },
+                { label: 'In Stock', value: inStock, color: '#1E6B34' },
+                { label: 'Low Stock', value: lowStock, color: '#8A5A00' },
+                { label: 'Out of Stock', value: outOfStock, color: '#B42318' },
               ]}
             />
           )}

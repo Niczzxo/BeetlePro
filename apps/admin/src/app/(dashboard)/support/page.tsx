@@ -66,13 +66,13 @@ import {
 const PAGE_SIZE = 10;
 
 const CHANNEL_COLORS: Record<SupportChannel, string> = {
-  admin: '#7C5CFF',
-  phone: '#1FA855',
-  website: '#1F6FD0',
-  whatsapp: '#0E9BB5',
-  email: '#E8930C',
-  messenger: '#C7509B',
-  'in-person': '#7E7A94',
+  admin: '#1C1B17',
+  phone: '#1E6B34',
+  website: '#45423B',
+  whatsapp: '#6E695D',
+  email: '#8A5A00',
+  messenger: '#55524A',
+  'in-person': '#6E695D',
 };
 
 const CHANNEL_ICONS: Record<SupportChannel, typeof Phone> = {

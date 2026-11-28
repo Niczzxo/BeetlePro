@@ -37,7 +37,7 @@ export function AreaChart({
   points,
   height = 190,
   formatValue,
-  stroke = '#7C5CFF',
+  stroke = '#1C1B17',
 }: {
   points: ChartPoint[];
   height?: number;
@@ -86,7 +86,7 @@ export function AreaChart({
           x2={width - padX}
           y1={padTop + fraction * (height - padTop - padBottom)}
           y2={padTop + fraction * (height - padTop - padBottom)}
-          stroke="#E9E6F5"
+          stroke="#E0DCD2"
           strokeWidth="1"
         />
       ))}
@@ -108,7 +108,7 @@ export function AreaChart({
               y={height - 6}
               textAnchor="middle"
               fontSize="10.5"
-              fill="#7E7A94"
+              fill="#6E695D"
             >
               {point.label}
             </text>
@@ -180,7 +180,7 @@ export function DonutChart({
           cy="84"
           r={radius}
           fill="none"
-          stroke="#F0EDFA"
+          stroke="#EFECE5"
           strokeWidth="17"
         />
         {arcs}
@@ -190,11 +190,11 @@ export function DonutChart({
           textAnchor="middle"
           fontSize="21"
           fontWeight="700"
-          fill="#1D1B2E"
+          fill="#1C1B17"
         >
           {centreValue}
         </text>
-        <text x="84" y="99" textAnchor="middle" fontSize="11" fill="#7E7A94">
+        <text x="84" y="99" textAnchor="middle" fontSize="11" fill="#6E695D">
           {centreLabel}
         </text>
       </svg>
@@ -222,7 +222,7 @@ export function DonutChart({
 export function BarChart({
   points,
   height = 170,
-  color = '#7C5CFF',
+  color = '#1C1B17',
   formatValue,
 }: {
   points: ChartPoint[];
@@ -270,7 +270,7 @@ export function BarChart({
               y={height - 6}
               textAnchor="middle"
               fontSize="10.5"
-              fill="#7E7A94"
+              fill="#6E695D"
             >
               {point.label}
             </text>

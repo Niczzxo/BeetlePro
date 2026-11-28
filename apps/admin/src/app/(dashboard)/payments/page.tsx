@@ -83,7 +83,7 @@ const METHOD_COLORS: Record<string, string> = {
   'upay-manual': '#00A651',
   'card-sslcommerz': '#2F6BFF',
   'bkash-gateway': '#B30E5A',
-  cod: '#7C5CFF',
+  cod: '#1C1B17',
 };
 
 function methodKey(payment: Payment): string {
@@ -576,7 +576,7 @@ export default function PaymentsPage() {
                     slices={methodGroups.map((group) => ({
                       label: group.label,
                       value: group.count,
-                      color: METHOD_COLORS[group.key] ?? '#94A3B8',
+                      color: METHOD_COLORS[group.key] ?? '#6E695D',
                     }))}
                   />
                   <div style={{ marginTop: 12 }}>
@@ -609,7 +609,7 @@ export default function PaymentsPage() {
                       left: 9,
                       top: '50%',
                       transform: 'translateY(-50%)',
-                      color: '#7E7A94',
+                      color: '#6E695D',
                     }}
                   />
                   <input
@@ -900,7 +900,7 @@ export default function PaymentsPage() {
                                   color: '#fff',
                                   background:
                                     METHOD_COLORS[methodKey(payment)] ??
-                                    '#64748B',
+                                    '#6E695D',
                                   whiteSpace: 'nowrap',
                                 }}
                               >

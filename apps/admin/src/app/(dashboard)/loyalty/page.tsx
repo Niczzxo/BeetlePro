@@ -820,7 +820,7 @@ function RuleForm({
     <form
       onSubmit={save}
       className="card"
-      style={{ marginTop: 16, background: 'var(--adm-surface-muted, #F6F4FC)' }}
+      style={{ marginTop: 16, background: 'var(--adm-surface-muted, #F7F5F0)' }}
     >
       <CardHead
         icon={Pencil}

@@ -70,7 +70,7 @@ import { downloadCsv, toCsv } from '../../../lib/csv';
  * says so instead of showing a fake uploader.
  */
 const PAGE_SIZE = 10;
-const REASON_COLORS = ['#7C5CFF', '#F06414', '#1F9D66', '#1F5FBF', '#C2262E', '#A86A00', '#6B6785'];
+const REASON_COLORS = ['#1C1B17', '#8A5A00', '#1E6B34', '#45423B', '#B42318', '#A79F92', '#6E695D'];
 
 type SortKey = 'createdAt' | 'total' | 'items';
 

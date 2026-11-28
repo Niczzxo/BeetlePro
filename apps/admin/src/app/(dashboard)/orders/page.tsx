@@ -62,16 +62,16 @@ const CANCELLABLE_STATUSES: OrderStatus[] = [
 ];
 
 const STATUS_COLORS: Record<OrderStatus, string> = {
-  pending: '#E8930C',
-  confirmed: '#7C5CFF',
-  processing: '#4C8DFF',
-  packed: '#00A8A8',
-  'ready-to-ship': '#2F9E6E',
-  shipped: '#3E63DD',
+  pending: '#8A5A00',
+  confirmed: '#1C1B17',
+  processing: '#45423B',
+  packed: '#6E695D',
+  'ready-to-ship': '#1E6B34',
+  shipped: '#2A2721',
   'out-for-delivery': '#8E4EC6',
-  delivered: '#1FA855',
-  cancelled: '#E5484D',
-  returned: '#AD5700',
+  delivered: '#1E6B34',
+  cancelled: '#B42318',
+  returned: '#8A5A00',
 };
 
 const TREND_METRICS = [

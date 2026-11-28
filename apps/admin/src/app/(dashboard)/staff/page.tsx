@@ -171,7 +171,7 @@ function RolesMatrixTable() {
                     type="checkbox"
                     checked={ROLE_PERMISSIONS[role].includes(key)}
                     disabled
-                    style={{ accentColor: '#7C5CFF' }}
+                    style={{ accentColor: '#1C1B17' }}
                     aria-label={`${ADMIN_ROLE_LABELS[role]}: ${key}`}
                   />
                 </td>

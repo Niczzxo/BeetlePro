@@ -57,7 +57,7 @@ function AcceptInviteForm() {
         justifyContent: 'center',
         padding: 20,
         background:
-          'radial-gradient(900px 480px at 85% -10%, rgba(151,117,255,0.35) 0%, rgba(151,117,255,0) 60%), linear-gradient(160deg, #161231 0%, #1C1744 55%, #2A1E63 100%)',
+          'radial-gradient(900px 480px at 85% -10%, rgba(244, 242, 237,0.08) 0%, rgba(244, 242, 237,0) 60%), linear-gradient(160deg, #141310 0%, #1C1B17 55%, #26231D 100%)',
       }}
     >
       <div className="card" style={{ width: '100%', maxWidth: 430, padding: 30 }}>

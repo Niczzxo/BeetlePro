@@ -66,15 +66,15 @@ import {
 const PAGE_SIZE = 10;
 
 const STATUS_COLORS: Record<LeadStatus, string> = {
-  new: '#7C5CFF',
-  qualified: '#1F6FD0',
-  contacted: '#0E9BB5',
-  interested: '#E8930C',
-  'follow-up-required': '#C7509B',
-  negotiation: '#8A5A12',
-  converted: '#1FA855',
-  lost: '#7E7A94',
-  'do-not-contact': '#E5484D',
+  new: '#1C1B17',
+  qualified: '#45423B',
+  contacted: '#6E695D',
+  interested: '#8A5A00',
+  'follow-up-required': '#55524A',
+  negotiation: '#8A5A00',
+  converted: '#1E6B34',
+  lost: '#6E695D',
+  'do-not-contact': '#B42318',
 };
 
 const SOURCE_LABELS: Record<LeadSource, string> = {
@@ -1204,7 +1204,7 @@ export default function LeadsPage() {
                   <span className="funnel-track">
                     <span
                       className="funnel-fill"
-                      style={{ display: 'block', width: `${Math.round((row.count / maxSource) * 100)}%`, background: '#7C5CFF' }}
+                      style={{ display: 'block', width: `${Math.round((row.count / maxSource) * 100)}%`, background: '#1C1B17' }}
                     />
                   </span>
                   <span className="num">{row.count}</span>
