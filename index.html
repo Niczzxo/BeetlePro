@@ -714,6 +714,14 @@ section{padding:84px 0 8px}
 .jcard .meta{font-size:13px;color:var(--muted);margin:16px 0 8px}
 .jcard h3{font-size:21px;line-height:1.25}
 .jcard p{font-size:14.5px;margin:8px 0 0}
+/* Journal cards: one uniform image ratio, equal-height cards in
+   the row, and meta, title and lead rows aligned across cards. */
+.jcard{display:flex;flex-direction:column;height:100%}
+.jcard .ph{flex:0 0 auto;aspect-ratio:16/10}
+.jcard .ph img{display:block;width:100%;height:100%;object-fit:cover}
+.jcard .meta{flex:0 0 auto}
+.jcard h3{flex:0 0 auto;min-height:calc(21px * 1.25 * 2)}
+.jcard p{flex:0 0 auto}
 
 /* footer */
 footer{background:var(--dark);color:var(--on-dark-mut);border-radius:var(--r-lg) var(--r-lg) 0 0;margin:64px 12px 0;padding:26px 0 0}
@@ -3562,6 +3570,137 @@ setTimeout(function(){ revealSweep(true); }, 900);
 
 /* Open the deep-linked view from the URL hash, or set home SEO */
 if (!routeFromHash()) applySEO('home');
+</script>
+<script>
+/* ================= live catalogue data layer =================
+   The catalogue above is embedded so the shop always renders,
+   even with no network. On load this layer fetches the live
+   catalogue from the Dostelo API, the same records the admin
+   panel edits, and when the API answers it swaps the embedded
+   data for the live records and re-renders the catalogue
+   surfaces. The home grid, category tiles and counts, fresh
+   picks, shop filters and grid, search and the product views
+   all read the same PRODUCTS and CATS globals, so they follow
+   automatically. Any failure (API offline, timeout, unexpected
+   shape) leaves the embedded catalogue on screen, so the shop
+   never appears broken. */
+(function(){
+  var API_BASE = window.DOSTELO_API_BASE || 'https://dosteloapi-production.up.railway.app';
+  var IMAGE_BASE = window.DOSTELO_IMAGE_BASE || 'https://dostelo-one.vercel.app';
+  /* Colour swatch hexes are presentation, keyed by the colour
+     names the catalogue uses; an unknown colour falls back to a
+     neutral warm grey. */
+  var COLOUR_HEX = {'Black':'#2B2925','Black & white':'#3A372F','Brown':'#6B4A2F','Charcoal':'#4A4A4C','Classic blue':'#6E6A63','Classic check':'#A9A49A','Indigo':'#3A372F','Khaki':'#A79F92','Navy':'#232A3D','Sky blue':'#A8C4DE','Tan':'#B98A4A','White':'#EFE9DC'};
+  function hexFor(name){ return COLOUR_HEX[name] || '#8A8578'; }
+  function resolveImg(url){
+    if (!url) return '';
+    if (/^(https?:|data:)/i.test(url)) return url;
+    return IMAGE_BASE + (url.charAt(0)==='/' ? url : '/' + url);
+  }
+  function taka(moneyObj){ return moneyObj && typeof moneyObj.amountMinor==='number' ? Math.round(moneyObj.amountMinor/100) : 0; }
+  function mapProduct(p, catNameById, embeddedById){
+    var variants = (p.variants||[]).filter(function(v){ return v.isActive !== false; });
+    var first = variants[0] || {};
+    var media = (p.media||[]).slice().sort(function(a,b){ return (a.position||0)-(b.position||0); });
+    var gallery = media.map(function(m){ return resolveImg(m.url); }).filter(function(u){ return !!u; });
+    var embedded = embeddedById[p.id];
+    if (!gallery.length && embedded && embedded.gallery) gallery = embedded.gallery.slice();
+    if (!gallery.length) return null;
+    var sizes = [], colours = [];
+    variants.forEach(function(v){
+      if (v.size && sizes.indexOf(v.size)<0) sizes.push(v.size);
+      if (v.colour && colours.indexOf(v.colour)<0) colours.push(v.colour);
+    });
+    if (!sizes.length) sizes = ['One size'];
+    var img = gallery[0];
+    var vars = colours.map(function(c, idx){ return [c, hexFor(c), gallery[Math.min(idx, gallery.length-1)]]; });
+    var sw = colours.map(function(c){ return [c, hexFor(c)]; });
+    var badge = p.isBestSeller ? 'Bestseller' : (p.isNewArrival ? 'New' : ((p.tags && p.tags[0]) || ''));
+    return {
+      id: p.id, name: p.name, cat: catNameById[p.categoryId] || 'Accessories',
+      price: taka(first.price), was: taka(first.compareAtPrice),
+      badge: badge, stock: typeof first.stock === 'number' ? first.stock : 0,
+      sizes: sizes, img: img, gallery: gallery, vars: vars, sw: sw,
+      desc: p.description || '', spec: []
+    };
+  }
+  function refreshCatalogue(){
+    renderGrid($('#homeGrid'), PRODUCTS.filter(function(p){ return p.cat!=='Shoes'; }).slice(0,8));
+    $('#catGrid').innerHTML = CATS.map(catHTML).join('');
+    $('#catGrid2').innerHTML = CATS.map(catHTML).join('');
+    $('#footShop').innerHTML = CATS.map(function(c){ return '<li><button data-cat="'+c.name+'">'+c.name+'</button></li>'; }).join('');
+    $('#pickRail').innerHTML = PICKS.map(function(k){
+      var p = byId(k.pid); if (!p) return '';
+      return '<button class="pick" data-product="'+k.pid+'"><span class="ph" style="display:block"><img src="'+p.img+'" alt="'+p.name+'" loading="lazy" decoding="async" />'+(p.gallery && p.gallery.length>1 && p.gallery[1]!==p.img ? '<img class="alt" src="'+p.gallery[1]+'" alt="" aria-hidden="true" loading="lazy" decoding="async" />' : '')+'</span>'
+      + '<span class="meta"><span class="cat">'+p.cat+'</span><span class="pr">'+money(p.price)+'</span></span><h3>'+p.name+'</h3></button>';
+    }).join('');
+    renderShopChrome();
+    scheduleShopGrid();
+    if (window.observeReveals) observeReveals();
+  }
+  function applyLiveCatalogue(productsData, categoriesData){
+    var items = productsData && productsData.items;
+    if (!items || !items.length) return false;
+    var catNameById = {}, apiCats = [];
+    ((categoriesData && categoriesData.items) || []).forEach(function(c){
+      if (c.isActive === false) return;
+      catNameById[c.id] = c.name; apiCats.push(c);
+    });
+    items.forEach(function(p){
+      if (!catNameById[p.categoryId]){
+        var slug = String(p.categoryId||'').replace(/^cat-/,'');
+        catNameById[p.categoryId] = slug ? slug.charAt(0).toUpperCase()+slug.slice(1) : 'Accessories';
+      }
+    });
+    var embeddedById = {};
+    PRODUCTS.forEach(function(p){ embeddedById[p.id] = p; });
+    var mapped = [];
+    items.forEach(function(p){
+      if (p.status && p.status !== 'active') return;
+      var m = mapProduct(p, catNameById, embeddedById);
+      if (m) mapped.push(m);
+    });
+    if (!mapped.length) return false;
+    /* Categories: keep the curated tile photo for known names,
+       order by the API position, and give a category the API
+       adds later its first product photo as the tile. */
+    var embeddedCatByName = {};
+    CATS.forEach(function(c){ embeddedCatByName[c.name] = c; });
+    var newCats = [];
+    apiCats.sort(function(a,b){ return (a.position||0)-(b.position||0); }).forEach(function(c){
+      var known = embeddedCatByName[c.name];
+      if (known) { newCats.push(known); return; }
+      var firstInCat = null;
+      for (var i=0;i<mapped.length;i++){ if (mapped[i].cat===c.name){ firstInCat = mapped[i]; break; } }
+      newCats.push({ name: c.name, img: firstInCat ? firstInCat.img : '', alt: c.name + ' at Dostelo' });
+    });
+    if (!newCats.length) newCats = CATS;
+    PRODUCTS.length = 0;
+    mapped.forEach(function(p){ PRODUCTS.push(p); });
+    CATS = newCats;
+    FILTERS = ['All'].concat(CATS.map(function(c){ return c.name; }));
+    if (typeof shopCat !== 'undefined' && shopCat !== 'All' && FILTERS.indexOf(shopCat) < 0) shopCat = 'All';
+    document.documentElement.setAttribute('data-catalog-source', 'api');
+    refreshCatalogue();
+    return true;
+  }
+  function fetchJson(url, timeoutMs){
+    var controller = window.AbortController ? new AbortController() : null;
+    var timer = controller ? setTimeout(function(){ controller.abort(); }, timeoutMs) : null;
+    return fetch(url, controller ? { signal: controller.signal } : {})
+      .then(function(res){ if (timer) clearTimeout(timer); if (!res.ok) throw new Error('HTTP '+res.status); return res.json(); });
+  }
+  function loadLiveCatalogue(){
+    Promise.all([
+      fetchJson(API_BASE + '/v1/catalog/products?limit=100', 8000),
+      fetchJson(API_BASE + '/v1/catalog/categories', 8000).catch(function(){ return null; })
+    ]).then(function(results){
+      applyLiveCatalogue(results[0], results[1]);
+    }).catch(function(){ /* the embedded catalogue stays on screen */ });
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', loadLiveCatalogue);
+  else loadLiveCatalogue();
+})();
 </script>
 </body>
 </html>
