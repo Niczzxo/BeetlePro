@@ -141,6 +141,32 @@ export class ReviewsService {
     return all.filter((review) => review.status === 'approved');
   }
 
+  /** The public read model the storefront product page renders:
+   * the approved reviews plus the rating summary computed here,
+   * server-side, from exactly those reviews (average, count and
+   * the per-star distribution). The client never averages or
+   * counts on its own. */
+  async listPublicWithSummary(
+    productId: string,
+  ): Promise<{ items: ProductReview[]; summary: { average: number; count: number; distribution: Record<string, number> } }> {
+    const items = await this.listPublic(productId);
+    const distribution: Record<string, number> = { '1': 0, '2': 0, '3': 0, '4': 0, '5': 0 };
+    let total = 0;
+    for (const review of items) {
+      total += review.rating;
+      const key = String(Math.min(5, Math.max(1, Math.round(review.rating))));
+      distribution[key] = (distribution[key] ?? 0) + 1;
+    }
+    return {
+      items,
+      summary: {
+        average: items.length ? total / items.length : 0,
+        count: items.length,
+        distribution,
+      },
+    };
+  }
+
   async setStatus(
     id: string,
     status: ReviewStatus,

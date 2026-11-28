@@ -13,6 +13,6 @@ export class PublicReviewsController {
 
   @Get(':id/reviews')
   async list(@Param('id') id: string) {
-    return { items: await this.reviews.listPublic(id) };
+    return this.reviews.listPublicWithSummary(id);
   }
 }
