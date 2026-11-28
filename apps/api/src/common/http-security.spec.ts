@@ -296,6 +296,21 @@ describe('environment validation and production hardening', () => {
     }
   });
 
+  it('always allows the public GitHub Pages shop origin, even in production', () => {
+    const saved = { ...process.env };
+    try {
+      process.env.NODE_ENV = 'production';
+      delete process.env.PUBLIC_SITE_URL;
+      expect(corsAllowlist()).toContain('https://niczzxo.github.io');
+      process.env.PUBLIC_SITE_URL = 'https://shop.example.com/catalog';
+      const origins = corsAllowlist();
+      expect(origins).toContain('https://shop.example.com');
+      expect(origins).toContain('https://niczzxo.github.io');
+    } finally {
+      process.env = saved;
+    }
+  });
+
   it('keeps local dev origins in the allowlist outside production', () => {
     const saved = { ...process.env };
     try {

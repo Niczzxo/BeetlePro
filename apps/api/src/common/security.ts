@@ -73,14 +73,28 @@ export function securityHeaders(
 }
 
 /**
+ * The public GitHub Pages shop is a permanent public surface of
+ * the store, so its origin is always on the allowlist: the static
+ * file there reads the public catalogue from this API in the
+ * browser. PUBLIC_SITE_URL can point the allowlist at a different
+ * public site origin if the shop ever moves.
+ */
+export const GITHUB_PAGES_ORIGIN = 'https://niczzxo.github.io';
+
+/**
  * CORS allowlist: STOREFRONT_URL and ADMIN_URL from the
- * environment, plus the usual local development origins for those
- * two apps and this API's own docs tooling. Origins not on the
- * list get no CORS headers at all.
+ * environment, the public GitHub Pages shop origin, plus the
+ * usual local development origins for those two apps and this
+ * API's own docs tooling. Origins not on the list get no CORS
+ * headers at all.
  */
 export function corsAllowlist(): string[] {
   const origins = new Set<string>();
-  for (const value of [process.env.STOREFRONT_URL, process.env.ADMIN_URL]) {
+  for (const value of [
+    process.env.STOREFRONT_URL,
+    process.env.ADMIN_URL,
+    process.env.PUBLIC_SITE_URL,
+  ]) {
     if (value) {
       try {
         origins.add(new URL(value).origin);
@@ -89,6 +103,7 @@ export function corsAllowlist(): string[] {
       }
     }
   }
+  origins.add(GITHUB_PAGES_ORIGIN);
   if (process.env.NODE_ENV !== 'production') {
     origins.add('http://localhost:3000');
     origins.add('http://localhost:3001');
