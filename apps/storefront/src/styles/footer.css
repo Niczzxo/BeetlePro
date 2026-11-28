@@ -254,3 +254,15 @@ html{overscroll-behavior:none}
    they were moved back out on 2026-11-28 to restore that contract. */
 .cform select{border:1px solid var(--line);background:var(--surface);border-radius:14px;padding:13px 16px;color:var(--ink);outline:none;width:100%;font:inherit}
 .cform select:focus{border-color:var(--ink)}
+
+/* Journal cards: one uniform image ratio, equal-height cards in
+   the row, and meta, title and lead rows aligned across cards.
+   The base .jcard rules sit in the frozen legacy.css; only the
+   alignment declarations are applied as overrides here, the same
+   block the live Pages file carries after its journal rules. */
+.jcard{display:flex;flex-direction:column;height:100%}
+.jcard .ph{flex:0 0 auto;aspect-ratio:16/10}
+.jcard .ph img{display:block;width:100%;height:100%;object-fit:cover}
+.jcard .meta{flex:0 0 auto}
+.jcard h3{flex:0 0 auto;min-height:calc(21px * 1.25 * 2)}
+.jcard p{flex:0 0 auto}
